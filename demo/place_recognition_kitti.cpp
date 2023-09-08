@@ -99,29 +99,37 @@ int main(int argc, char **argv) {
     }
 
     // check if keyframe
-    if (cloudInd % config_setting.sub_frame_num_ == 0 && cloudInd != 0) {
+    if (cloudInd % config_setting.sub_frame_num_ == 0 && cloudInd != 0)
+    {
       std::cout << "Key Frame id:" << keyCloudInd
                 << ", cloud size: " << temp_cloud->size() << std::endl;
+
       // step1. Descriptor Extraction
       auto t_descriptor_begin = std::chrono::high_resolution_clock::now();
       std::vector<STDesc> stds_vec;
       std_manager->GenerateSTDescs(temp_cloud, stds_vec);
       auto t_descriptor_end = std::chrono::high_resolution_clock::now();
       descriptor_time.push_back(time_inc(t_descriptor_end, t_descriptor_begin));
+
       // step2. Searching Loop
       auto t_query_begin = std::chrono::high_resolution_clock::now();
-      std::pair<int, double> search_result(-1, 0);
-      std::pair<Eigen::Vector3d, Eigen::Matrix3d> loop_transform;
-      loop_transform.first << 0, 0, 0;
-      loop_transform.second = Eigen::Matrix3d::Identity();
-      std::vector<std::pair<STDesc, STDesc>> loop_std_pair;
-      if (keyCloudInd > config_setting.skip_near_num_) {
-        std_manager->SearchLoop(stds_vec, search_result, loop_transform,
-                                loop_std_pair);
+      std::pair<int, double> out_search_result(-1, 0);
+      std::pair<Eigen::Vector3d, Eigen::Matrix3d> out_loop_transform;
+      out_loop_transform.first << 0, 0, 0;
+      out_loop_transform.second = Eigen::Matrix3d::Identity();
+      std::vector<std::pair<STDesc, STDesc>> out_loop_std_pair;
+      if (keyCloudInd > config_setting.skip_near_num_)
+      {
+        std_manager->SearchLoop(
+          stds_vec,
+          out_search_result,
+          out_loop_transform,
+          out_loop_std_pair);
       }
-      if (search_result.first > 0) {
+      if (out_search_result.first > 0)
+      {
         std::cout << "[Loop Detection] triggle loop: " << keyCloudInd << "--"
-                  << search_result.first << ", score:" << search_result.second
+                  << out_search_result.first << ", score:" << out_search_result.second
                   << std::endl;
       }
       auto t_query_end = std::chrono::high_resolution_clock::now();
@@ -139,14 +147,11 @@ int main(int argc, char **argv) {
                 << time_inc(t_map_update_end, t_map_update_begin) << "ms"
                 << std::endl;
       std::cout << std::endl;
-
       pcl::PointCloud<pcl::PointXYZI> save_key_cloud;
       save_key_cloud = *temp_cloud;
-
       std_manager->key_cloud_vec_.push_back(save_key_cloud.makeShared());
 
-      // publish
-
+      // step 4. (Optional) publish
       sensor_msgs::PointCloud2 pub_cloud;
       pcl::toROSMsg(*temp_cloud, pub_cloud);
       pub_cloud.header.frame_id = "camera_init";
@@ -154,19 +159,18 @@ int main(int argc, char **argv) {
       pcl::toROSMsg(*std_manager->corner_cloud_vec_.back(), pub_cloud);
       pub_cloud.header.frame_id = "camera_init";
       pubCurrentCorner.publish(pub_cloud);
-
-      if (search_result.first > 0) {
+      if (out_search_result.first > 0) {
         triggle_loop_num++;
-        pcl::toROSMsg(*std_manager->key_cloud_vec_[search_result.first],
+        pcl::toROSMsg(*std_manager->key_cloud_vec_[out_search_result.first],
                       pub_cloud);
         pub_cloud.header.frame_id = "camera_init";
         pubMatchedCloud.publish(pub_cloud);
         slow_loop.sleep();
-        pcl::toROSMsg(*std_manager->corner_cloud_vec_[search_result.first],
+        pcl::toROSMsg(*std_manager->corner_cloud_vec_[out_search_result.first],
                       pub_cloud);
         pub_cloud.header.frame_id = "camera_init";
         pubMatchedCorner.publish(pub_cloud);
-        publish_std_pairs(loop_std_pair, pubSTD);
+        publish_std_pairs(out_loop_std_pair, pubSTD);
         slow_loop.sleep();
         // getchar();
       }
@@ -174,6 +178,8 @@ int main(int argc, char **argv) {
       keyCloudInd++;
       loop.sleep();
     }
+
+    /* Odom Publish*/
     nav_msgs::Odometry odom;
     odom.header.frame_id = "camera_init";
     odom.pose.pose.position.x = translation[0];
@@ -185,9 +191,13 @@ int main(int argc, char **argv) {
     odom.pose.pose.orientation.y = q.y();
     odom.pose.pose.orientation.z = q.z();
     pubOdomAftMapped.publish(odom);
+
+    /* Loop End Callback*/
     loop.sleep();
     cloudInd++;
   }
+
+  /* Analyzie Time Consumption */
   double mean_descriptor_time =
       std::accumulate(descriptor_time.begin(), descriptor_time.end(), 0) * 1.0 /
       descriptor_time.size();

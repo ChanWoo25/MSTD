@@ -1,9 +1,10 @@
-#include "include/STDesc.h"
+#include <include/STDesc.h>
 #include <nav_msgs/Odometry.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <ros/ros.h>
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
+#include <fstream>
 
 int findPoseIndexUsingTime(std::vector<double> &time_list, double &time) {
   double time_inc = 10000000000;
@@ -25,7 +26,7 @@ int findPoseIndexUsingTime(std::vector<double> &time_list, double &time) {
   return min_index;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char * argv[]) {
   ros::init(argc, argv, "demo_kitti");
   ros::NodeHandle nh;
   std::string bag_path = "";
@@ -57,7 +58,7 @@ int main(int argc, char **argv) {
   std::cout << "Sucessfully load pose with number: " << poses_vec.size()
             << std::endl;
 
-  STDescManager *std_manager = new STDescManager(config_setting);
+  STDescManager * std_manager = new STDescManager(config_setting);
 
   size_t cloudInd = 0;
   size_t keyCloudInd = 0;
@@ -68,6 +69,19 @@ int main(int argc, char **argv) {
   std::vector<double> querying_time;
   std::vector<double> update_time;
   int triggle_loop_num = 0;
+
+  /* # Create Log File */
+  std::ofstream ofile;
+  std::string log_fn = "/data/results/std_result_park2.csv";
+  std::string fn = "/data/results/std_consumption_park2.csv";
+  if (config_setting.is_benchmark)
+  {
+    ofile.open(log_fn);
+    if (ofile.is_open())
+    {
+      std::cout << "log file '" << log_fn << "' is opend!";
+    }
+  }
 
   std::fstream file_;
   file_.open(bag_path, std::ios::in);
@@ -85,20 +99,27 @@ int main(int argc, char **argv) {
   types.push_back(std::string("sensor_msgs/PointCloud2"));
   rosbag::View view(bag, rosbag::TypeQuery(types));
 
-  while (ros::ok()) {
-    BOOST_FOREACH (rosbag::MessageInstance const m, view) {
+  while (ros::ok())
+  {
+    BOOST_FOREACH (rosbag::MessageInstance const m, view)
+    {
       sensor_msgs::PointCloud2::ConstPtr cloud_ptr =
           m.instantiate<sensor_msgs::PointCloud2>();
-      if (cloud_ptr != NULL) {
-        double laser_time = cloud_ptr->header.stamp.toSec();
+      if (cloud_ptr != NULL)
+      {
         pcl::PCLPointCloud2 pcl_pc;
         pcl_conversions::toPCL(*cloud_ptr, pcl_pc);
         pcl::PointCloud<pcl::PointXYZI> cloud;
         pcl::fromPCLPointCloud2(pcl_pc, cloud);
+
+        double laser_time = cloud_ptr->header.stamp.toSec();
+        static double init_time = -1.0;
+        if (init_time < 0.0) { init_time = laser_time; }
         int pose_index = findPoseIndexUsingTime(times_vec, laser_time);
         Eigen::Vector3d translation = poses_vec[pose_index].first;
         Eigen::Matrix3d rotation = poses_vec[pose_index].second;
-        for (size_t i = 0; i < cloud.size(); i++) {
+        for (size_t i = 0; i < cloud.size(); i++)
+        {
           Eigen::Vector3d pv = point2vec(cloud.points[i]);
           pv = rotation * pv + translation;
           cloud.points[i] = vec2point(pv);
@@ -109,9 +130,14 @@ int main(int argc, char **argv) {
         }
 
         // check if keyframe
-        if (cloudInd % config_setting.sub_frame_num_ == 0 && cloudInd != 0) {
-          std::cout << "Key Frame id:" << keyCloudInd
-                    << ", cloud size: " << temp_cloud->size() << std::endl;
+        if (cloudInd % config_setting.sub_frame_num_ == 0 && cloudInd != 0)
+        {
+          if (!config_setting.is_benchmark)
+          {
+            std::cout << "Key Frame id:" << keyCloudInd
+                      << ", cloud size: " << temp_cloud->size() << std::endl;
+          }
+
           // step1. Descriptor Extraction
           auto t_descriptor_begin = std::chrono::high_resolution_clock::now();
           std::vector<STDesc> stds_vec;
@@ -119,6 +145,7 @@ int main(int argc, char **argv) {
           auto t_descriptor_end = std::chrono::high_resolution_clock::now();
           descriptor_time.push_back(
               time_inc(t_descriptor_end, t_descriptor_begin));
+
           // step2. Searching Loop
           auto t_query_begin = std::chrono::high_resolution_clock::now();
           std::pair<int, double> search_result(-1, 0);
@@ -126,11 +153,17 @@ int main(int argc, char **argv) {
           loop_transform.first << 0, 0, 0;
           loop_transform.second = Eigen::Matrix3d::Identity();
           std::vector<std::pair<STDesc, STDesc>> loop_std_pair;
-          if (keyCloudInd > config_setting.skip_near_num_) {
-            std_manager->SearchLoop(stds_vec, search_result, loop_transform,
-                                    loop_std_pair);
+          if (keyCloudInd > config_setting.skip_near_num_)
+          {
+            std_manager->SearchLoop(
+              stds_vec,
+              search_result,
+              loop_transform,
+              loop_std_pair);
           }
-          if (search_result.first > 0) {
+
+          if (search_result.first > 0 && !config_setting.is_benchmark)
+          {
             std::cout << "[Loop Detection] triggle loop: " << keyCloudInd
                       << "--" << search_result.first
                       << ", score:" << search_result.second << std::endl;
@@ -143,7 +176,7 @@ int main(int argc, char **argv) {
           std_manager->AddSTDescs(stds_vec);
           auto t_map_update_end = std::chrono::high_resolution_clock::now();
           update_time.push_back(time_inc(t_map_update_end, t_map_update_begin));
-          std::cout << "[Time] descriptor extraction: "
+          std::cout << "[Time] (" << static_cast<uint>(laser_time) <<  ") descriptor extraction: "
                     << time_inc(t_descriptor_end, t_descriptor_begin) << "ms, "
                     << "query: " << time_inc(t_query_end, t_query_begin)
                     << "ms, "
@@ -157,46 +190,83 @@ int main(int argc, char **argv) {
 
           std_manager->key_cloud_vec_.push_back(save_key_cloud.makeShared());
 
+          if (config_setting.is_benchmark)
+          {
+            std_manager->key_positions_.push_back(translation);
+            std_manager->key_times_.push_back(laser_time);
+          }
+
           // publish
-
           sensor_msgs::PointCloud2 pub_cloud;
-          pcl::toROSMsg(*temp_cloud, pub_cloud);
-          pub_cloud.header.frame_id = "camera_init";
-          pubCureentCloud.publish(pub_cloud);
-          pcl::toROSMsg(*std_manager->corner_cloud_vec_.back(), pub_cloud);
-          pub_cloud.header.frame_id = "camera_init";
-          pubCurrentCorner.publish(pub_cloud);
+          if (!config_setting.is_benchmark)
+          {
+            pcl::toROSMsg(*temp_cloud, pub_cloud);
+            pub_cloud.header.frame_id = "camera_init";
+            pubCureentCloud.publish(pub_cloud);
+            pcl::toROSMsg(*std_manager->corner_cloud_vec_.back(), pub_cloud);
+            pub_cloud.header.frame_id = "camera_init";
+            pubCurrentCorner.publish(pub_cloud);
+          }
 
-          if (search_result.first > 0) {
-            triggle_loop_num++;
-            pcl::toROSMsg(*std_manager->key_cloud_vec_[search_result.first],
-                          pub_cloud);
-            pub_cloud.header.frame_id = "camera_init";
-            pubMatchedCloud.publish(pub_cloud);
-            slow_loop.sleep();
-            pcl::toROSMsg(*std_manager->corner_cloud_vec_[search_result.first],
-                          pub_cloud);
-            pub_cloud.header.frame_id = "camera_init";
-            pubMatchedCorner.publish(pub_cloud);
-            publish_std_pairs(loop_std_pair, pubSTD);
-            slow_loop.sleep();
-            // getchar();
+          if (search_result.first > 0
+              || config_setting.is_benchmark)
+          {
+            if (config_setting.is_benchmark)
+            {
+              ofile << std::fixed;
+              ofile.precision(6);
+              ofile << laser_time << ',';
+              ofile << search_result.second << ',';
+              Eigen::Vector3d query_translation = translation;
+              Eigen::Vector3d value_translation
+                = std_manager->key_positions_[search_result.first];
+              ofile.precision(4);
+              ofile << query_translation(0) << ',';
+              ofile << query_translation(1) << ',';
+              ofile << query_translation(2) << ',';
+              ofile << value_translation(0) << ',';
+              ofile << value_translation(1) << ',';
+              ofile << value_translation(2) << '\n';
+            }
+            else
+            {
+              triggle_loop_num++;
+              pcl::toROSMsg(*std_manager->key_cloud_vec_[search_result.first],
+                            pub_cloud);
+              pub_cloud.header.frame_id = "camera_init";
+              pubMatchedCloud.publish(pub_cloud);
+              slow_loop.sleep();
+              pcl::toROSMsg(*std_manager->corner_cloud_vec_[search_result.first],
+                            pub_cloud);
+              pub_cloud.header.frame_id = "camera_init";
+              pubMatchedCorner.publish(pub_cloud);
+              publish_std_pairs(loop_std_pair, pubSTD);
+              slow_loop.sleep();
+              getchar();
+              // if (config_setting.show_all)
+              // {
+              // }
+            }
           }
           temp_cloud->clear();
           keyCloudInd++;
           loop.sleep();
         }
-        nav_msgs::Odometry odom;
-        odom.header.frame_id = "camera_init";
-        odom.pose.pose.position.x = translation[0];
-        odom.pose.pose.position.y = translation[1];
-        odom.pose.pose.position.z = translation[2];
-        Eigen::Quaterniond q(rotation);
-        odom.pose.pose.orientation.w = q.w();
-        odom.pose.pose.orientation.x = q.x();
-        odom.pose.pose.orientation.y = q.y();
-        odom.pose.pose.orientation.z = q.z();
-        pubOdomAftMapped.publish(odom);
+
+        if (!config_setting.is_benchmark)
+        {
+          nav_msgs::Odometry odom;
+          odom.header.frame_id = "camera_init";
+          odom.pose.pose.position.x = translation[0];
+          odom.pose.pose.position.y = translation[1];
+          odom.pose.pose.position.z = translation[2];
+          Eigen::Quaterniond q(rotation);
+          odom.pose.pose.orientation.w = q.w();
+          odom.pose.pose.orientation.x = q.x();
+          odom.pose.pose.orientation.y = q.y();
+          odom.pose.pose.orientation.z = q.z();
+          pubOdomAftMapped.publish(odom);
+        }
         loop.sleep();
         cloudInd++;
       }
@@ -218,6 +288,41 @@ int main(int argc, char **argv) {
               << mean_descriptor_time + mean_query_time + mean_update_time
               << "ms" << std::endl;
     break;
+  }
+
+  /* # Close Log File */
+  if (config_setting.is_benchmark && ofile.is_open())
+  {
+    ofile.close();
+    if (!ofile.is_open())
+    {
+      std::cout << "log file is successfully closed!";
+    }
+  }
+
+  /* # Create Time Consumption Analysis File */
+  std::ofstream time_outfile;
+  if (config_setting.is_benchmark)
+  {
+    time_outfile.open(fn);
+
+    std::cout << "descriptor_time.size : " << descriptor_time.size() << std::endl;
+    std::cout << "querying_time.size   : " << querying_time.size() << std::endl;
+    std::cout << "update_time.size     : " << update_time.size() << std::endl;
+
+    if (time_outfile.is_open())
+    {
+      std::cout << "consumption log file '" << fn << "' is opend!" << std::endl;
+      for (size_t i = 0; i < descriptor_time.size(); i++)
+      {
+        time_outfile << std::fixed;
+        time_outfile.precision(4);
+        time_outfile << descriptor_time[i] << ','
+                     << querying_time[i] << ','
+                     << update_time[i] << '\n';
+      }
+    }
+    time_outfile.close();
   }
 
   return 0;

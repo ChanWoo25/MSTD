@@ -56,6 +56,9 @@ typedef struct ConfigSetting {
   double normal_threshold_ = 0.1;
   double dis_threshold_ = 0.3;
 
+  /* Debugging */
+  bool is_benchmark = false;
+  bool show_all = true;
 } ConfigSetting;
 
 // Structure for Stabel Triangle Descriptor
@@ -282,6 +285,11 @@ public:
 
   // save all key clouds, optional
   std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> key_cloud_vec_;
+
+  // save all key positions
+  std::vector<Eigen::Vector3d> key_positions_;
+
+  std::vector<double> key_times_;
 
   // save all corner points, optional
   std::vector<pcl::PointCloud<pcl::PointXYZINormal>::Ptr> corner_cloud_vec_;

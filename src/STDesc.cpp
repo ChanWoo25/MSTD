@@ -306,9 +306,9 @@ void publish_std_pairs(
 }
 
 void STDescManager::GenerateSTDescs(
-    pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
-    std::vector<STDesc> &stds_vec) {
-
+  pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+  std::vector<STDesc> & stds_vec)
+{
   // step1, voxelization and plane dection
   std::unordered_map<VOXEL_LOC, OctoTree *> voxel_map;
   init_voxel_map(input_cloud, voxel_map);
@@ -343,9 +343,11 @@ void STDescManager::GenerateSTDescs(
 }
 
 void STDescManager::SearchLoop(
-    const std::vector<STDesc> &stds_vec, std::pair<int, double> &loop_result,
-    std::pair<Eigen::Vector3d, Eigen::Matrix3d> &loop_transform,
-    std::vector<std::pair<STDesc, STDesc>> &loop_std_pair) {
+  const std::vector<STDesc> & stds_vec,
+  std::pair<int, double> & loop_result,
+  std::pair<Eigen::Vector3d, Eigen::Matrix3d> & loop_transform,
+  std::vector<std::pair<STDesc, STDesc>> & loop_std_pair)
+{
 
   if (stds_vec.size() == 0) {
     ROS_ERROR_STREAM("No STDescs!");
@@ -357,8 +359,8 @@ void STDescManager::SearchLoop(
   std::vector<STDMatchList> candidate_matcher_vec;
   candidate_selector(stds_vec, candidate_matcher_vec);
 
-  auto t2 = std::chrono::high_resolution_clock::now();
   // step2, select best candidates from rough candidates
+  auto t2 = std::chrono::high_resolution_clock::now();
   double best_score = 0;
   unsigned int best_candidate_id = -1;
   unsigned int triggle_candidate = -1;
@@ -389,8 +391,17 @@ void STDescManager::SearchLoop(
     loop_transform = best_transform;
     loop_std_pair = best_sucess_match_vec;
     return;
-  } else {
-    loop_result = std::pair<int, double>(-1, 0);
+  }
+  else
+  {
+    if (config_setting_.is_benchmark)
+    {
+      loop_result = std::pair<int, double>(best_candidate_id, best_score);
+    }
+    else
+    {
+      loop_result = std::pair<int, double>(-1, 0);
+    }
     return;
   }
 }
@@ -420,17 +431,21 @@ void STDescManager::AddSTDescs(const std::vector<STDesc> &stds_vec) {
 }
 
 void STDescManager::init_voxel_map(
-    const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
-    std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map) {
+  const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
+  std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map)
+{
+  /* Voxelization */
   uint plsize = input_cloud->size();
-  for (uint i = 0; i < plsize; i++) {
-    Eigen::Vector3d p_c(input_cloud->points[i].x, input_cloud->points[i].y,
+  for (uint i = 0; i < plsize; i++)
+  {
+    Eigen::Vector3d p_c(input_cloud->points[i].x,
+                        input_cloud->points[i].y,
                         input_cloud->points[i].z);
     double loc_xyz[3];
     for (int j = 0; j < 3; j++) {
       loc_xyz[j] = p_c[j] / config_setting_.voxel_size_;
       if (loc_xyz[j] < 0) {
-        loc_xyz[j] -= 1.0;
+        loc_xyz[j] -= 1.0; /* [-1.0, 0.0) 범위는 사용하지 않음 => Why? */
       }
     }
     VOXEL_LOC position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1],
@@ -452,19 +467,13 @@ void STDescManager::init_voxel_map(
     i++;
     iter_list.push_back(iter);
   }
-  // speed up initialization
-  // #ifdef MP_EN
-  //   omp_set_num_threads(MP_PROC_NUM);
-  //   std::cout << "omp num:" << MP_PROC_NUM << std::endl;
-  // #pragma omp parallel for
-  // #endif
-  for (int i = 0; i < index.size(); i++) {
+
+  /* Plane Detection */
+  // std::cout << "voxel num:" << index.size() << std::endl;
+  for (int i = 0; i < index.size(); i++)
+  {
     iter_list[i]->second->init_octo_tree();
   }
-  // std::cout << "voxel num:" << index.size() << std::endl;
-  // std::for_each(
-  //     std::execution::par_unseq, index.begin(), index.end(),
-  //     [&](const size_t &i) { iter_list[i]->second->init_octo_tree(); });
 }
 
 void STDescManager::build_connection(
@@ -1492,7 +1501,8 @@ void OctoTree::init_plane() {
   evalsReal.rowwise().sum().minCoeff(&evalsMin);
   evalsReal.rowwise().sum().maxCoeff(&evalsMax);
   int evalsMid = 3 - evalsMin - evalsMax;
-  if (evalsReal(evalsMin) < config_setting_.plane_detection_thre_) {
+  if (evalsReal(evalsMin) < config_setting_.plane_detection_thre_)
+  {
     plane_ptr_->normal_ << evecs.real()(0, evalsMin), evecs.real()(1, evalsMin),
         evecs.real()(2, evalsMin);
     plane_ptr_->min_eigen_value_ = evalsReal(evalsMin);
@@ -1508,7 +1518,9 @@ void OctoTree::init_plane() {
     plane_ptr_->p_center_.normal_x = plane_ptr_->normal_(0);
     plane_ptr_->p_center_.normal_y = plane_ptr_->normal_(1);
     plane_ptr_->p_center_.normal_z = plane_ptr_->normal_(2);
-  } else {
+  }
+  else
+  {
     plane_ptr_->is_plane_ = false;
   }
 }
