@@ -3,13 +3,13 @@
 
   <arg name="rviz" default="true" />
   <rosparam command="load" file="$(find std_detector)/config/config_kitti.yaml" />
-  <node 
-		pkg="std_detector" 
-		type="place_recognition_kitti" 
-		name="place_recognition_kitti" 
-		output="screen" 
+  <node
+		pkg="std_detector"
+		type="place_recognition_kitti"
+		name="place_recognition_kitti"
+		output="screen"
 	/>
-  <param name="lidar_path" type="string" value = "/usb/kitti/sequences/00/velodyne/"/>
+  <param name="lidar_path" type="string" value = "/data/datasets/dataset_kitti/00/velodyne/"/>
   <param name="pose_path" type="string" value = "/usb2/kitti_bags/correct_pose/kitti00.txt"/>
 
   <group if="$(arg rviz)">

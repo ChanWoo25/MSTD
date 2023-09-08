@@ -1,0 +1,12 @@
+<launch>
+<!-- Launch file for Livox AVIA LiDAR -->
+  <rosparam command="load" file="$(find std_detector)/config/config_livox.yaml" />
+  <node
+		pkg="std_detector"
+		type="place_recognition_livox"
+		name="place_recognition_livox"
+		output="screen"
+	/>
+  <param name="bag_path" type="string" value = "/data/datasets/dataset_std/park_avia/park2.bag"/>
+  <param name="pose_path" type="string" value = "/data/datasets/dataset_std/park_avia/park2_pose.txt"/>
+</launch>
