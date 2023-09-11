@@ -477,11 +477,15 @@ void STDescManager::init_voxel_map(
 }
 
 void STDescManager::build_connection(
-    std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map) {
-  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++) {
-    if (iter->second->plane_ptr_->is_plane_) {
-      OctoTree *current_octo = iter->second;
-      for (int i = 0; i < 6; i++) {
+  std::unordered_map<VOXEL_LOC, OctoTree *> & voxel_map)
+{
+  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++)
+  {
+    if (iter->second->plane_ptr_->is_plane_)
+    {
+      OctoTree * current_octo = iter->second;
+      for (int i = 0; i < 6; i++)
+      {
         VOXEL_LOC neighbor = iter->first;
         if (i == 0) {
           neighbor.x = neighbor.x + 1;
@@ -497,43 +501,51 @@ void STDescManager::build_connection(
           neighbor.z = neighbor.z - 1;
         }
         auto near = voxel_map.find(neighbor);
-        if (near == voxel_map.end()) {
+        if (near == voxel_map.end())
+        {
           current_octo->is_check_connect_[i] = true;
           current_octo->connect_[i] = false;
-        } else {
-          if (!current_octo->is_check_connect_[i]) {
-            OctoTree *near_octo = near->second;
-            current_octo->is_check_connect_[i] = true;
-            int j;
-            if (i >= 3) {
-              j = i - 3;
-            } else {
-              j = i + 3;
-            }
-            near_octo->is_check_connect_[j] = true;
-            if (near_octo->plane_ptr_->is_plane_) {
-              // merge near octo
-              Eigen::Vector3d normal_diff = current_octo->plane_ptr_->normal_ -
-                                            near_octo->plane_ptr_->normal_;
-              Eigen::Vector3d normal_add = current_octo->plane_ptr_->normal_ +
-                                           near_octo->plane_ptr_->normal_;
-              if (normal_diff.norm() <
-                      config_setting_.plane_merge_normal_thre_ ||
-                  normal_add.norm() <
-                      config_setting_.plane_merge_normal_thre_) {
-                current_octo->connect_[i] = true;
-                near_octo->connect_[j] = true;
-                current_octo->connect_tree_[i] = near_octo;
-                near_octo->connect_tree_[j] = current_octo;
-              } else {
-                current_octo->connect_[i] = false;
-                near_octo->connect_[j] = false;
-              }
-            } else {
-              current_octo->connect_[i] = false;
+          continue;
+        }
+
+        if (!current_octo->is_check_connect_[i])
+        {
+          OctoTree *near_octo = near->second;
+          current_octo->is_check_connect_[i] = true;
+          int j;
+          if (i >= 3) {
+            j = i - 3;
+          } else {
+            j = i + 3;
+          }
+          near_octo->is_check_connect_[j] = true;
+          if (near_octo->plane_ptr_->is_plane_)
+          {
+            // merge near octo
+            Eigen::Vector3d normal_diff = current_octo->plane_ptr_->normal_ -
+                                          near_octo->plane_ptr_->normal_;
+            Eigen::Vector3d normal_add = current_octo->plane_ptr_->normal_ +
+                                          near_octo->plane_ptr_->normal_;
+            if (normal_diff.norm() <
+                    config_setting_.plane_merge_normal_thre_ ||
+                normal_add.norm() <
+                    config_setting_.plane_merge_normal_thre_) {
+              current_octo->connect_[i] = true;
               near_octo->connect_[j] = true;
+              current_octo->connect_tree_[i] = near_octo;
               near_octo->connect_tree_[j] = current_octo;
             }
+            else
+            {
+              current_octo->connect_[i] = false;
+              near_octo->connect_[j] = false;
+            }
+          }
+          else
+          {
+            current_octo->connect_[i] = false;
+            near_octo->connect_[j] = true;
+            near_octo->connect_tree_[j] = current_octo;
           }
         }
       }
@@ -576,13 +588,17 @@ void STDescManager::corner_extractor(
       }
     }
   }
-  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++) {
-    if (!iter->second->plane_ptr_->is_plane_) {
+  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++)
+  {
+    if (!iter->second->plane_ptr_->is_plane_)
+    {
       VOXEL_LOC current_position = iter->first;
-      OctoTree *current_octo = iter->second;
+      OctoTree * current_octo = iter->second;
       int connect_index = -1;
-      for (int i = 0; i < 6; i++) {
-        if (current_octo->connect_[i]) {
+      for (int i = 0; i < 6; i++)
+      {
+        if (current_octo->connect_[i])
+        {
           connect_index = i;
           OctoTree *connect_octo = current_octo->connect_tree_[connect_index];
           bool use = false;
@@ -597,13 +613,16 @@ void STDescManager::corner_extractor(
           if (use == false) {
             continue;
           }
+
           // only project voxels with points num > 10
-          if (current_octo->voxel_points_.size() > 10) {
+          if (current_octo->voxel_points_.size() > 10)
+          {
             Eigen::Vector3d projection_normal =
                 current_octo->connect_tree_[connect_index]->plane_ptr_->normal_;
             Eigen::Vector3d projection_center =
                 current_octo->connect_tree_[connect_index]->plane_ptr_->center_;
             std::vector<Eigen::Vector3d> proj_points;
+
             // proj the boundary voxel and nearby voxel onto adjacent plane
             for (auto voxel_inc : voxel_round) {
               VOXEL_LOC connect_project_position = current_position;
@@ -611,10 +630,15 @@ void STDescManager::corner_extractor(
               connect_project_position.y += voxel_inc[1];
               connect_project_position.z += voxel_inc[2];
               auto iter_near = voxel_map.find(connect_project_position);
-              if (iter_near != voxel_map.end()) {
+              if (iter_near != voxel_map.end())
+              {
                 bool skip_flag = false;
                 if (!voxel_map[connect_project_position]
-                         ->plane_ptr_->is_plane_) {
+                     ->plane_ptr_->is_plane_)
+                {
+                  /* One connected voxel (when it's not plane)
+                    can be projected multiple time
+                    by managing "proj_normal_vec_" */
                   if (voxel_map[connect_project_position]->is_project_) {
                     for (auto normal : voxel_map[connect_project_position]
                                            ->proj_normal_vec_) {
@@ -1503,8 +1527,9 @@ void OctoTree::init_plane() {
   int evalsMid = 3 - evalsMin - evalsMax;
   if (evalsReal(evalsMin) < config_setting_.plane_detection_thre_)
   {
-    plane_ptr_->normal_ << evecs.real()(0, evalsMin), evecs.real()(1, evalsMin),
-        evecs.real()(2, evalsMin);
+    plane_ptr_->normal_ << evecs.real()(0, evalsMin),
+                           evecs.real()(1, evalsMin),
+                           evecs.real()(2, evalsMin);
     plane_ptr_->min_eigen_value_ = evalsReal(evalsMin);
     plane_ptr_->radius_ = sqrt(evalsReal(evalsMax));
     plane_ptr_->is_plane_ = true;

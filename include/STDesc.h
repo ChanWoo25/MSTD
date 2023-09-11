@@ -32,6 +32,7 @@ typedef struct ConfigSetting {
   double plane_merge_normal_thre_;
   double plane_merge_dis_thre_;
   double plane_detection_thre_ = 0.01;
+  double plane_detection_thre_second_ = 0.05; // 논문 상 두번째 Threshold... 안 쓰임...?
   double voxel_size_ = 1.0;
   int voxel_init_num_ = 10;
   double proj_image_resolution_ = 0.5;
