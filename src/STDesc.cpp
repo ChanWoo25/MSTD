@@ -571,9 +571,10 @@ void STDescManager::getPlane(
 }
 
 void STDescManager::corner_extractor(
-    std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
-    const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
-    pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points) {
+  std::unordered_map<VOXEL_LOC, OctoTree *> & voxel_map,
+  const pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_points)
+{
 
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr prepare_corner_points(
       new pcl::PointCloud<pcl::PointXYZINormal>);
@@ -588,15 +589,17 @@ void STDescManager::corner_extractor(
       }
     }
   }
+
   for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++)
   {
+    /* Choose non-plane(boundary) voxels */
     if (!iter->second->plane_ptr_->is_plane_)
     {
       VOXEL_LOC current_position = iter->first;
-      OctoTree * current_octo = iter->second;
+      OctoTree * current_octo    = iter->second;
       int connect_index = -1;
-      for (int i = 0; i < 6; i++)
-      {
+      for (int i = 0; i < 6; i++) {
+        /* Per Connected Voxel */
         if (current_octo->connect_[i])
         {
           connect_index = i;
@@ -653,19 +656,21 @@ void STDescManager::corner_extractor(
                   if (skip_flag) {
                     continue;
                   }
-                  for (size_t j = 0; j < voxel_map[connect_project_position]
-                                             ->voxel_points_.size();
-                       j++) {
+                  for (size_t j = 0;
+                       j < voxel_map[connect_project_position]->voxel_points_.size();
+                       j++)
+                  {
                     proj_points.push_back(
-                        voxel_map[connect_project_position]->voxel_points_[j]);
+                      voxel_map[connect_project_position]->voxel_points_[j]);
                     voxel_map[connect_project_position]->is_project_ = true;
                     voxel_map[connect_project_position]
                         ->proj_normal_vec_.push_back(projection_normal);
                   }
                 }
               }
-            }
-            // here do the 2D projection and corner extraction
+            } // for (auto voxel_inc : voxel_round)
+
+            /* Extract Corners */
             pcl::PointCloud<pcl::PointXYZINormal>::Ptr sub_corner_points(
                 new pcl::PointCloud<pcl::PointXYZINormal>);
             extract_corner(projection_center, projection_normal, proj_points,
@@ -675,7 +680,7 @@ void STDescManager::corner_extractor(
             }
           }
         }
-      }
+      } // for (int i = 0; i < 6; i++)
     }
   }
   non_maxi_suppression(prepare_corner_points);
@@ -697,17 +702,21 @@ void STDescManager::corner_extractor(
 }
 
 void STDescManager::extract_corner(
-    const Eigen::Vector3d &proj_center, const Eigen::Vector3d proj_normal,
-    const std::vector<Eigen::Vector3d> proj_points,
-    pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points) {
+  const Eigen::Vector3d & proj_center,
+  const Eigen::Vector3d proj_normal,
+  const std::vector<Eigen::Vector3d> proj_points,
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_points)
+{
 
-  double resolution = config_setting_.proj_image_resolution_;
+  double resolution = config_setting_.proj_image_resolution_; // Default 0.5
   double dis_threshold_min = config_setting_.proj_dis_min_;
   double dis_threshold_max = config_setting_.proj_dis_max_;
   double A = proj_normal[0];
   double B = proj_normal[1];
   double C = proj_normal[2];
-  double D = -(A * proj_center[0] + B * proj_center[1] + C * proj_center[2]);
+  double D = -(  A * proj_center[0]
+               + B * proj_center[1]
+               + C * proj_center[2]);
   Eigen::Vector3d x_axis(1, 1, 0);
   if (C != 0) {
     x_axis[2] = -(A + B) / C;
@@ -723,15 +732,20 @@ void STDescManager::extract_corner(
   double ax = x_axis[0];
   double bx = x_axis[1];
   double cx = x_axis[2];
-  double dx =
-      -(ax * proj_center[0] + bx * proj_center[1] + cx * proj_center[2]);
+  double dx = -(  ax * proj_center[0]
+                + bx * proj_center[1]
+                + cx * proj_center[2]);
   double ay = y_axis[0];
   double by = y_axis[1];
   double cy = y_axis[2];
-  double dy =
-      -(ay * proj_center[0] + by * proj_center[1] + cy * proj_center[2]);
+  double dy = -(  ay * proj_center[0]
+                + by * proj_center[1]
+                + cy * proj_center[2]);
+
+  /*  */
   std::vector<Eigen::Vector2d> point_list_2d;
-  for (size_t i = 0; i < proj_points.size(); i++) {
+  for (size_t i = 0; i < proj_points.size(); i++)
+  {
     double x = proj_points[i][0];
     double y = proj_points[i][1];
     double z = proj_points[i][2];
@@ -741,30 +755,37 @@ void STDescManager::extract_corner(
     }
     Eigen::Vector3d cur_project;
 
-    cur_project[0] = (-A * (B * y + C * z + D) + x * (B * B + C * C)) /
-                     (A * A + B * B + C * C);
-    cur_project[1] = (-B * (A * x + C * z + D) + y * (A * A + C * C)) /
-                     (A * A + B * B + C * C);
-    cur_project[2] = (-C * (A * x + B * y + D) + z * (A * A + B * B)) /
-                     (A * A + B * B + C * C);
+    cur_project[0] =  ( -A * (B * y + C * z + D)
+                       + x * (B * B + C * C)    )
+                    / (  A * A + B * B + C * C  );
+    cur_project[1] =  ( -B * (A * x + C * z + D)
+                       + y * (A * A + C * C)    )
+                    / (  A * A + B * B + C * C  );
+    cur_project[2] =  ( -C * (A * x + B * y + D)
+                       + z * (A * A + B * B)    )
+                    / (  A * A + B * B + C * C  );
     pcl::PointXYZ p;
     p.x = cur_project[0];
     p.y = cur_project[1];
     p.z = cur_project[2];
-    double project_x =
-        cur_project[0] * ay + cur_project[1] * by + cur_project[2] * cy + dy;
-    double project_y =
-        cur_project[0] * ax + cur_project[1] * bx + cur_project[2] * cx + dx;
+    double project_x = cur_project[0] * ay
+                     + cur_project[1] * by
+                     + cur_project[2] * cy
+                     + 1.0            * dy;
+    double project_y = cur_project[0] * ax
+                     + cur_project[1] * bx
+                     + cur_project[2] * cx
+                     + 1.0            * dx;
     Eigen::Vector2d p_2d(project_x, project_y);
     point_list_2d.push_back(p_2d);
   }
+
+  if (point_list_2d.size() <= 5) { return; }
+
   double min_x = 10;
   double max_x = -10;
   double min_y = 10;
   double max_y = -10;
-  if (point_list_2d.size() <= 5) {
-    return;
-  }
   for (auto pi : point_list_2d) {
     if (pi[0] < min_x) {
       min_x = pi[0];
@@ -779,6 +800,7 @@ void STDescManager::extract_corner(
       max_y = pi[1];
     }
   }
+
   // segment project cloud with a fixed resolution
   int segmen_base_num = 5;
   double segmen_len = segmen_base_num * resolution;
@@ -791,8 +813,10 @@ void STDescManager::extract_corner(
   double gradient_array[x_axis_len][y_axis_len] = {0};
   double mean_x_array[x_axis_len][y_axis_len] = {0};
   double mean_y_array[x_axis_len][y_axis_len] = {0};
-  for (int x = 0; x < x_axis_len; x++) {
-    for (int y = 0; y < y_axis_len; y++) {
+  for (int x = 0; x < x_axis_len; x++)
+  {
+    for (int y = 0; y < y_axis_len; y++)
+    {
       img_count_array[x][y] = 0;
       mean_x_array[x][y] = 0;
       mean_y_array[x][y] = 0;
@@ -801,7 +825,8 @@ void STDescManager::extract_corner(
       img_container[x][y] = single_container;
     }
   }
-  for (size_t i = 0; i < point_list_2d.size(); i++) {
+  for (size_t i = 0; i < point_list_2d.size(); i++)
+  {
     int x_index = (int)((point_list_2d[i][0] - min_x) / resolution);
     int y_index = (int)((point_list_2d[i][1] - min_y) / resolution);
     mean_x_array[x_index][y_index] += point_list_2d[i][0];
@@ -809,9 +834,12 @@ void STDescManager::extract_corner(
     img_count_array[x_index][y_index]++;
     img_container[x_index][y_index].push_back(point_list_2d[i]);
   }
+
   // calc gradient
-  for (int x = 0; x < x_axis_len; x++) {
-    for (int y = 0; y < y_axis_len; y++) {
+  for (int x = 0; x < x_axis_len; x++)
+  {
+    for (int y = 0; y < y_axis_len; y++)
+    {
       double gradient = 0;
       int cnt = 0;
       int inc = 1;
@@ -836,29 +864,42 @@ void STDescManager::extract_corner(
       }
     }
   }
+
   // extract corner by gradient
   std::vector<int> max_gradient_vec;
   std::vector<int> max_gradient_x_index_vec;
   std::vector<int> max_gradient_y_index_vec;
-  for (int x_segment_index = 0; x_segment_index < x_segment_num;
-       x_segment_index++) {
-    for (int y_segment_index = 0; y_segment_index < y_segment_num;
-         y_segment_index++) {
+  for (int x_segment_index = 0;
+       x_segment_index < x_segment_num;
+       x_segment_index++)
+  {
+    for (int y_segment_index = 0;
+         y_segment_index < y_segment_num;
+         y_segment_index++)
+    {
+      /* Per Grid(segmen) Check */
       double max_gradient = 0;
       int max_gradient_x_index = -10;
       int max_gradient_y_index = -10;
       for (int x_index = x_segment_index * segmen_base_num;
-           x_index < (x_segment_index + 1) * segmen_base_num; x_index++) {
+           x_index < (x_segment_index + 1) * segmen_base_num;
+           x_index++)
+      {
         for (int y_index = y_segment_index * segmen_base_num;
-             y_index < (y_segment_index + 1) * segmen_base_num; y_index++) {
-          if (img_count_array[x_index][y_index] > max_gradient) {
+             y_index < (y_segment_index + 1) * segmen_base_num;
+             y_index++)
+        {
+          /* Per Cell Gradient Check */
+          if (img_count_array[x_index][y_index] > max_gradient)
+          {
             max_gradient = img_count_array[x_index][y_index];
             max_gradient_x_index = x_index;
             max_gradient_y_index = y_index;
           }
         }
       }
-      if (max_gradient >= config_setting_.corner_thre_) {
+      if (max_gradient >= config_setting_.corner_thre_)
+      {
         max_gradient_vec.push_back(max_gradient);
         max_gradient_x_index_vec.push_back(max_gradient_x_index);
         max_gradient_y_index_vec.push_back(max_gradient_y_index);
@@ -917,20 +958,26 @@ void STDescManager::extract_corner(
 }
 
 void STDescManager::non_maxi_suppression(
-    pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points) {
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points)
+{
   std::vector<bool> is_add_vec;
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr prepare_key_cloud(
       new pcl::PointCloud<pcl::PointXYZINormal>);
   pcl::KdTreeFLANN<pcl::PointXYZINormal> kd_tree;
-  for (auto pi : corner_points->points) {
+
+  for (auto pi : corner_points->points)
+  {
     prepare_key_cloud->push_back(pi);
     is_add_vec.push_back(true);
   }
+
   kd_tree.setInputCloud(prepare_key_cloud);
   std::vector<int> pointIdxRadiusSearch;
   std::vector<float> pointRadiusSquaredDistance;
   double radius = config_setting_.non_max_suppression_radius_;
-  for (size_t i = 0; i < prepare_key_cloud->size(); i++) {
+
+  for (size_t i = 0; i < prepare_key_cloud->size(); i++)
+  {
     pcl::PointXYZINormal searchPoint = prepare_key_cloud->points[i];
     if (kd_tree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch,
                              pointRadiusSquaredDistance) > 0) {
@@ -960,21 +1007,25 @@ void STDescManager::non_maxi_suppression(
 }
 
 void STDescManager::build_stdesc(
-    const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points,
-    std::vector<STDesc> &stds_vec) {
+  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_points,
+  std::vector<STDesc> & stds_vec)
+{
   stds_vec.clear();
   double scale = 1.0 / config_setting_.std_side_resolution_;
   int near_num = config_setting_.descriptor_near_num_;
   double max_dis_threshold = config_setting_.descriptor_max_len_;
   double min_dis_threshold = config_setting_.descriptor_min_len_;
+
   std::unordered_map<VOXEL_LOC, bool> feat_map;
   pcl::KdTreeFLANN<pcl::PointXYZINormal>::Ptr kd_tree(
       new pcl::KdTreeFLANN<pcl::PointXYZINormal>);
   kd_tree->setInputCloud(corner_points);
   std::vector<int> pointIdxNKNSearch(near_num);
   std::vector<float> pointNKNSquaredDistance(near_num);
+
   // Search N nearest corner points to form stds.
-  for (size_t i = 0; i < corner_points->size(); i++) {
+  for (size_t i = 0; i < corner_points->size(); i++)
+  {
     pcl::PointXYZINormal searchPoint = corner_points->points[i];
     if (kd_tree->nearestKSearch(searchPoint, near_num, pointIdxNKNSearch,
                                 pointNKNSquaredDistance) > 0) {
