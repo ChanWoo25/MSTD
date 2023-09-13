@@ -5,7 +5,7 @@ maximum_corner_num: 500
 # key points
 plane_detection_thre: 0.01
 plane_merge_normal_thre: 0.1
-voxel_size: 1
+voxel_size: 1.0
 voxel_init_num: 10
 proj_image_resolution: 0.25
 proj_dis_min: 0

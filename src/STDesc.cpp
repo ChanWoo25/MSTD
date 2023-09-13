@@ -364,9 +364,11 @@ void STDescManager::SearchLoop(
   double best_score = 0;
   unsigned int best_candidate_id = -1;
   unsigned int triggle_candidate = -1;
+
   std::pair<Eigen::Vector3d, Eigen::Matrix3d> best_transform;
   std::vector<std::pair<STDesc, STDesc>> best_sucess_match_vec;
-  for (size_t i = 0; i < candidate_matcher_vec.size(); i++) {
+  for (size_t i = 0; i < candidate_matcher_vec.size(); i++)
+  {
     double verify_score = -1;
     std::pair<Eigen::Vector3d, Eigen::Matrix3d> relative_pose;
     std::vector<std::pair<STDesc, STDesc>> sucess_match_vec;
@@ -1161,8 +1163,9 @@ void STDescManager::build_stdesc(
 };
 
 void STDescManager::candidate_selector(
-    const std::vector<STDesc> &stds_vec,
-    std::vector<STDMatchList> &candidate_matcher_vec) {
+  const std::vector<STDesc> & stds_vec,
+  std::vector<STDMatchList> & candidate_matcher_vec)
+{
   double match_array[MAX_FRAME_N] = {0};
   std::vector<std::pair<STDesc, STDesc>> match_vec;
   std::vector<int> match_index_vec;
@@ -1299,9 +1302,10 @@ void STDescManager::candidate_selector(
 
 // Get the best candidate frame by geometry check
 void STDescManager::candidate_verify(
-    const STDMatchList &candidate_matcher, double &verify_score,
-    std::pair<Eigen::Vector3d, Eigen::Matrix3d> &relative_pose,
-    std::vector<std::pair<STDesc, STDesc>> &sucess_match_vec) {
+  const STDMatchList &candidate_matcher, double & verify_score,
+  std::pair<Eigen::Vector3d, Eigen::Matrix3d> & relative_pose,
+  std::vector<std::pair<STDesc, STDesc>> &sucess_match_vec)
+{
   sucess_match_vec.clear();
   int skip_len = (int)(candidate_matcher.match_list_.size() / 50) + 1;
   int use_size = candidate_matcher.match_list_.size() / skip_len;
@@ -1334,10 +1338,9 @@ void STDescManager::candidate_verify(
       double dis_A = (A_transform - verify_pair.second.vertex_A_).norm();
       double dis_B = (B_transform - verify_pair.second.vertex_B_).norm();
       double dis_C = (C_transform - verify_pair.second.vertex_C_).norm();
-      if (dis_A < dis_threshold && dis_B < dis_threshold &&
-          dis_C < dis_threshold) {
-        vote++;
-      }
+      if (   dis_A < dis_threshold
+          && dis_B < dis_threshold
+          && dis_C < dis_threshold) { vote++; }
     }
     mylock.lock();
     vote_list[i] = vote;
@@ -1408,9 +1411,10 @@ void STDescManager::triangle_solver(std::pair<STDesc, STDesc> &std_pair,
 }
 
 double STDescManager::plane_geometric_verify(
-    const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
-    const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
-    const std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform) {
+  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+  const std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform)
+{
   Eigen::Vector3d t = transform.first;
   Eigen::Matrix3d rot = transform.second;
   pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
