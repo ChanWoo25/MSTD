@@ -105,8 +105,11 @@ int main(int argc, char * argv[]) {
     {
       sensor_msgs::PointCloud2::ConstPtr cloud_ptr =
           m.instantiate<sensor_msgs::PointCloud2>();
-      if (cloud_ptr != NULL)
-      {
+
+      if (cloud_ptr == nullptr) { continue; }
+
+      // if (cloud_ptr != NULL)
+      // {
         pcl::PCLPointCloud2 pcl_pc;
         pcl_conversions::toPCL(*cloud_ptr, pcl_pc);
         pcl::PointCloud<pcl::PointXYZI> cloud;
@@ -134,7 +137,8 @@ int main(int argc, char * argv[]) {
         {
           if (!config_setting.is_benchmark)
           {
-            std::cout << "Key Frame id:" << keyCloudInd
+            std::cout.precision(4);
+            std::cout << std::fixed << "[Time] (" << (laser_time) << ")Key Frame id:" << keyCloudInd
                       << ", cloud size: " << temp_cloud->size() << std::endl;
           }
 
@@ -176,7 +180,7 @@ int main(int argc, char * argv[]) {
           std_manager->AddSTDescs(stds_vec);
           auto t_map_update_end = std::chrono::high_resolution_clock::now();
           update_time.push_back(time_inc(t_map_update_end, t_map_update_begin));
-          std::cout << "[Time] (" << static_cast<uint>(laser_time) <<  ") descriptor extraction: "
+          std::cout << "- descriptor extraction: "
                     << time_inc(t_descriptor_end, t_descriptor_begin) << "ms, "
                     << "query: " << time_inc(t_query_end, t_query_begin)
                     << "ms, "
@@ -242,7 +246,7 @@ int main(int argc, char * argv[]) {
               pubMatchedCorner.publish(pub_cloud);
               publish_std_pairs(loop_std_pair, pubSTD);
               slow_loop.sleep();
-              getchar();
+              // getchar();
               // if (config_setting.show_all)
               // {
               // }
@@ -250,6 +254,11 @@ int main(int argc, char * argv[]) {
           }
           temp_cloud->clear();
           keyCloudInd++;
+
+
+        /* For note loop timestamps */
+        getchar();
+
           loop.sleep();
         }
 
@@ -267,9 +276,10 @@ int main(int argc, char * argv[]) {
           odom.pose.pose.orientation.z = q.z();
           pubOdomAftMapped.publish(odom);
         }
+
         loop.sleep();
         cloudInd++;
-      }
+      // }
     }
     double mean_descriptor_time =
         std::accumulate(descriptor_time.begin(), descriptor_time.end(), 0) *
