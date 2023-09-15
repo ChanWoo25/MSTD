@@ -2,6 +2,8 @@
 <!-- Launch file for Livox AVIA LiDAR -->
 
   <arg name="rviz" default="true" />
+  <arg name="seq_id" default="00" />
+
   <rosparam command="load" file="$(find std_detector)/config/config_kitti.yaml" />
   <node
 		pkg="std_detector"
@@ -9,8 +11,10 @@
 		name="place_recognition_kitti"
 		output="screen"
 	/>
-  <param name="lidar_path" type="string" value = "/data/datasets/dataset_kitti/00/velodyne/"/>
-  <param name="pose_path" type="string" value = "/usb2/kitti_bags/correct_pose/kitti00.txt"/>
+  <param name="lidar_path" type="string" value = "/data/datasets/dataset_kitti/$(arg seq_id)/velodyne/"/>
+  <param name="pose_path" type="string" value = "/data/datasets/dataset_std/kitti/kitti$(arg seq_id).txt"/>
+  <param name="seq_name" type="string" value = "kitti$(arg seq_id)"/>
+  <param name="is_benchmark" type="string" value = "false"/>
 
   <group if="$(arg rviz)">
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find std_detector)/rviz_cfg/demo.rviz" />

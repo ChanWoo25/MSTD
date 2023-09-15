@@ -1,6 +1,7 @@
 #include "include/STDesc.h"
 #include <nav_msgs/Odometry.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <fstream>
 
 // Read KITTI data
 std::vector<float> read_lidar_data(const std::string lidar_data_path) {
@@ -29,11 +30,17 @@ int main(int argc, char **argv) {
   std::string lidar_path = "";
   std::string pose_path = "";
   std::string config_path = "";
+  std::string seq_name = "";
+  std::string is_benchmark = "";
   nh.param<std::string>("lidar_path", lidar_path, "");
   nh.param<std::string>("pose_path", pose_path, "");
+  nh.param<std::string>("seq_name", seq_name, "");
+  nh.param<std::string>("is_benchmark", is_benchmark, "");
 
   ConfigSetting config_setting;
   read_parameters(nh, config_setting);
+  config_setting.is_benchmark =
+    (is_benchmark == "true") ? (true) : (false);
 
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
@@ -52,7 +59,6 @@ int main(int argc, char **argv) {
 
   ros::Rate loop(500);
   ros::Rate slow_loop(10);
-
   std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> poses_vec;
   std::vector<double> times_vec;
   load_pose_with_time(pose_path, poses_vec, times_vec);
@@ -69,8 +75,26 @@ int main(int argc, char **argv) {
   std::vector<double> descriptor_time;
   std::vector<double> querying_time;
   std::vector<double> update_time;
+
+  /* Create Log File */
+  std::ofstream ofile;
+  std::string loop_fn = "/data/results/stdesc/" + seq_name + "_std_loop.csv";
+  std::string time_fn = "/data/results/stdesc/" + seq_name + "_std_time.csv";
+  std::cout << "loop_fn: " << loop_fn << std::endl;
+  std::cout << "time_fn: " << time_fn << std::endl;
+  if (config_setting.is_benchmark)
+  {
+    ofile.open(loop_fn);
+    if (ofile.is_open())
+    {
+      std::cout << "loop file '" << loop_fn << "' is opend!";
+    }
+  }
+
+
   int triggle_loop_num = 0;
-  while (ros::ok()) {
+  while (ros::ok())
+  {
     std::stringstream lidar_data_path;
     lidar_data_path << lidar_path << std::setfill('0') << std::setw(6)
                     << cloudInd << ".bin";
@@ -101,8 +125,11 @@ int main(int argc, char **argv) {
     // check if keyframe
     if (cloudInd % config_setting.sub_frame_num_ == 0 && cloudInd != 0)
     {
-      std::cout << "Key Frame id:" << keyCloudInd
-                << ", cloud size: " << temp_cloud->size() << std::endl;
+      if (!config_setting.is_benchmark)
+      {
+        std::cout << "Key Frame id:" << keyCloudInd
+                  << ", cloud size: " << temp_cloud->size() << std::endl;
+      }
 
       // step1. Descriptor Extraction
       auto t_descriptor_begin = std::chrono::high_resolution_clock::now();
@@ -126,7 +153,9 @@ int main(int argc, char **argv) {
           out_loop_transform,
           out_loop_std_pair);
       }
-      if (out_search_result.first > 0)
+
+
+      if (out_search_result.first > 0 && !config_setting.is_benchmark)
       {
         std::cout << "[Loop Detection] triggle loop: " << keyCloudInd << "--"
                   << out_search_result.first << ", score:" << out_search_result.second
@@ -151,46 +180,90 @@ int main(int argc, char **argv) {
       save_key_cloud = *temp_cloud;
       std_manager->key_cloud_vec_.push_back(save_key_cloud.makeShared());
 
+      if (config_setting.is_benchmark)
+      {
+        std_manager->key_positions_.push_back(translation);
+        std_manager->key_times_.push_back(keyCloudInd);
+      }
+
       // step 4. (Optional) publish
       sensor_msgs::PointCloud2 pub_cloud;
-      pcl::toROSMsg(*temp_cloud, pub_cloud);
-      pub_cloud.header.frame_id = "camera_init";
-      pubCureentCloud.publish(pub_cloud);
-      pcl::toROSMsg(*std_manager->corner_cloud_vec_.back(), pub_cloud);
-      pub_cloud.header.frame_id = "camera_init";
-      pubCurrentCorner.publish(pub_cloud);
-      if (out_search_result.first > 0) {
-        triggle_loop_num++;
-        pcl::toROSMsg(*std_manager->key_cloud_vec_[out_search_result.first],
-                      pub_cloud);
+
+      if (!config_setting.is_benchmark)
+      {
+        pcl::toROSMsg(*temp_cloud, pub_cloud);
         pub_cloud.header.frame_id = "camera_init";
-        pubMatchedCloud.publish(pub_cloud);
-        slow_loop.sleep();
-        pcl::toROSMsg(*std_manager->corner_cloud_vec_[out_search_result.first],
-                      pub_cloud);
+        pubCureentCloud.publish(pub_cloud);
+        pcl::toROSMsg(*std_manager->corner_cloud_vec_.back(), pub_cloud);
         pub_cloud.header.frame_id = "camera_init";
-        pubMatchedCorner.publish(pub_cloud);
-        publish_std_pairs(out_loop_std_pair, pubSTD);
-        slow_loop.sleep();
-        // getchar();
+        pubCurrentCorner.publish(pub_cloud);
+      }
+
+
+      if (out_search_result.first > 0
+          || config_setting.is_benchmark)
+      {
+        if (config_setting.is_benchmark)
+        {
+          ofile << std::fixed;
+          ofile.precision(6);
+          ofile << keyCloudInd << ',';
+          ofile << out_search_result.second << ',';
+          Eigen::Vector3d query_translation = translation;
+          Eigen::Vector3d value_translation
+            = std_manager->key_positions_[out_search_result.first];
+          ofile.precision(4);
+          ofile << query_translation(0) << ',';
+          ofile << query_translation(1) << ',';
+          ofile << query_translation(2) << ',';
+          ofile << value_translation(0) << ',';
+          ofile << value_translation(1) << ',';
+          ofile << value_translation(2) << '\n';
+        }
+        else
+        {
+          triggle_loop_num++;
+          pcl::toROSMsg(*std_manager->key_cloud_vec_[out_search_result.first],
+                        pub_cloud);
+          pub_cloud.header.frame_id = "camera_init";
+          pubMatchedCloud.publish(pub_cloud);
+          slow_loop.sleep();
+          pcl::toROSMsg(*std_manager->corner_cloud_vec_[out_search_result.first],
+                        pub_cloud);
+          pub_cloud.header.frame_id = "camera_init";
+          pubMatchedCorner.publish(pub_cloud);
+          publish_std_pairs(out_loop_std_pair, pubSTD);
+          slow_loop.sleep();
+          // getchar();
+        }
       }
       temp_cloud->clear();
       keyCloudInd++;
+
+      /* For note loop timestamps */
+      if (!config_setting.is_benchmark)
+      {
+        getchar();
+      }
+
       loop.sleep();
     }
 
     /* Odom Publish*/
-    nav_msgs::Odometry odom;
-    odom.header.frame_id = "camera_init";
-    odom.pose.pose.position.x = translation[0];
-    odom.pose.pose.position.y = translation[1];
-    odom.pose.pose.position.z = translation[2];
-    Eigen::Quaterniond q(rotation);
-    odom.pose.pose.orientation.w = q.w();
-    odom.pose.pose.orientation.x = q.x();
-    odom.pose.pose.orientation.y = q.y();
-    odom.pose.pose.orientation.z = q.z();
-    pubOdomAftMapped.publish(odom);
+    if (!config_setting.is_benchmark)
+    {
+      nav_msgs::Odometry odom;
+      odom.header.frame_id = "camera_init";
+      odom.pose.pose.position.x = translation[0];
+      odom.pose.pose.position.y = translation[1];
+      odom.pose.pose.position.z = translation[2];
+      Eigen::Quaterniond q(rotation);
+      odom.pose.pose.orientation.w = q.w();
+      odom.pose.pose.orientation.x = q.x();
+      odom.pose.pose.orientation.y = q.y();
+      odom.pose.pose.orientation.z = q.z();
+      pubOdomAftMapped.publish(odom);
+    }
 
     /* Loop End Callback*/
     loop.sleep();
@@ -214,5 +287,41 @@ int main(int argc, char **argv) {
             << "ms, update: " << mean_update_time << "ms, total: "
             << mean_descriptor_time + mean_query_time + mean_update_time << "ms"
             << std::endl;
+
+  /* # Close Log File */
+  if (config_setting.is_benchmark && ofile.is_open())
+  {
+    ofile.close();
+    if (!ofile.is_open())
+    {
+      std::cout << "log file is successfully closed!";
+    }
+  }
+
+  /* # Create Time Consumption Analysis File */
+  std::ofstream time_outfile;
+  if (config_setting.is_benchmark)
+  {
+    time_outfile.open(time_fn);
+
+    std::cout << "descriptor_time.size : " << descriptor_time.size() << std::endl;
+    std::cout << "querying_time.size   : " << querying_time.size() << std::endl;
+    std::cout << "update_time.size     : " << update_time.size() << std::endl;
+
+    if (time_outfile.is_open())
+    {
+      std::cout << "consumption log file '" << time_fn << "' is opend!" << std::endl;
+      for (size_t i = 0; i < descriptor_time.size(); i++)
+      {
+        time_outfile << std::fixed;
+        time_outfile.precision(4);
+        time_outfile << descriptor_time[i] << ','
+                     << querying_time[i] << ','
+                     << update_time[i] << '\n';
+      }
+    }
+    time_outfile.close();
+  }
+
   return 0;
 }
