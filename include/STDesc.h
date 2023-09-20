@@ -17,14 +17,17 @@
 #include <unordered_map>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 #define HASH_P 116101
 #define MAX_N 10000000000
 #define MAX_FRAME_N 20000
 
 typedef struct ConfigSetting {
-  /* for point cloud pre-preocess*/
   int stop_skip_enable_ = 0;
+  /* for point cloud pre-preocess*/
   double ds_size_ = 0.5;
   int maximum_corner_num_ = 30;
 
@@ -58,8 +61,10 @@ typedef struct ConfigSetting {
   double dis_threshold_ = 0.3;
 
   /* Debugging */
-  bool is_benchmark = false;
-  bool show_all = true;
+  bool is_benchmark;
+  std::string lidar_path;
+  std::string pose_path;
+  std::string seq_name;
 } ConfigSetting;
 
 // Structure for Stabel Triangle Descriptor
@@ -319,12 +324,21 @@ public:
       const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
       std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform);
 
+  // Get pseudo image from consecutive lidar scans
+  auto getPseudoImage(
+    const std::vector<Eigen::Vector3d> & translations,
+    const std::vector<Eigen::Matrix3d> & rotations,
+    const pcl::PointCloud<pcl::PointXYZI>::Ptr & raw_cloud,
+    const pcl::PointCloud<pcl::PointXYZI>::Ptr & down_cloud)
+    -> cv::Mat;
+
 private:
   /*Following are sub-processing functions*/
 
   // voxelization and plane detection
   void init_voxel_map(const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
                       std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map);
+
 
   // build connection for planes
   void build_connection(std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map);

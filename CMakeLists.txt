@@ -45,6 +45,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 find_package(PCL REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(GTSAM REQUIRED QUIET)
+find_package(OpenCV  4.2.0)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
@@ -59,27 +60,28 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  # "/usr/include/opencv4"
 )
 
 add_executable(place_recognition_kitti demo/place_recognition_kitti.cpp src/STDesc.cpp )
-target_link_libraries(place_recognition_kitti 
-        ${catkin_LIBRARIES} 
-        ${PCL_LIBRARIES} 
-        ${OpenCV_LIBS} 
+target_link_libraries(place_recognition_kitti
+        ${catkin_LIBRARIES}
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBS}
         ${CERES_LIBRARIES})
 
 add_executable(place_recognition_livox demo/place_recognition_livox.cpp src/STDesc.cpp )
-target_link_libraries(place_recognition_livox 
-        ${catkin_LIBRARIES} 
-        ${PCL_LIBRARIES} 
-        ${OpenCV_LIBS} 
+target_link_libraries(place_recognition_livox
+        ${catkin_LIBRARIES}
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBS}
         ${CERES_LIBRARIES})
 
 add_executable(pgo_demo demo/pgo_demo.cpp src/STDesc.cpp )
-target_link_libraries(pgo_demo 
-        ${catkin_LIBRARIES} 
-        ${PCL_LIBRARIES} 
-        ${OpenCV_LIBS} 
+target_link_libraries(pgo_demo
+        ${catkin_LIBRARIES}
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBS}
         ${CERES_LIBRARIES}
         gtsam)
 

@@ -27,20 +27,20 @@ std::vector<float> read_lidar_data(const std::string lidar_data_path) {
 int main(int argc, char **argv) {
   ros::init(argc, argv, "demo_kitti");
   ros::NodeHandle nh;
-  std::string lidar_path = "";
-  std::string pose_path = "";
-  std::string config_path = "";
-  std::string seq_name = "";
-  std::string is_benchmark = "";
-  nh.param<std::string>("lidar_path", lidar_path, "");
-  nh.param<std::string>("pose_path", pose_path, "");
-  nh.param<std::string>("seq_name", seq_name, "");
-  nh.param<std::string>("is_benchmark", is_benchmark, "");
+  // std::string lidar_path = "";
+  // std::string pose_path = "";
+  // std::string config_path = "";
+  // std::string seq_name = "";
+  // std::string is_benchmark = "";
+  // nh.param<std::string>("lidar_path", lidar_path, "");
+  // nh.param<std::string>("pose_path", pose_path, "");
+  // nh.param<std::string>("seq_name", seq_name, "");
+  // nh.param<std::string>("is_benchmark", is_benchmark, "");
 
   ConfigSetting config_setting;
   read_parameters(nh, config_setting);
-  config_setting.is_benchmark =
-    (is_benchmark == "true") ? (true) : (false);
+  // config_setting.is_benchmark =
+  //   (is_benchmark == "true") ? (true) : (false);
 
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
   ros::Rate slow_loop(10);
   std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> poses_vec;
   std::vector<double> times_vec;
-  load_pose_with_time(pose_path, poses_vec, times_vec);
+  load_pose_with_time(config_setting.pose_path, poses_vec, times_vec);
   std::cout << "Sucessfully load pose with number: " << poses_vec.size()
             << std::endl;
 
@@ -78,8 +78,8 @@ int main(int argc, char **argv) {
 
   /* Create Log File */
   std::ofstream ofile;
-  std::string loop_fn = "/data/results/stdesc/" + seq_name + "_std_loop.csv";
-  std::string time_fn = "/data/results/stdesc/" + seq_name + "_std_time.csv";
+  std::string loop_fn = "/data/results/stdesc/test_std_loop.csv";
+  std::string time_fn = "/data/results/stdesc/test_std_time.csv";
   std::cout << "loop_fn: " << loop_fn << std::endl;
   std::cout << "time_fn: " << time_fn << std::endl;
   if (config_setting.is_benchmark)
@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
   while (ros::ok())
   {
     std::stringstream lidar_data_path;
-    lidar_data_path << lidar_path << std::setfill('0') << std::setw(6)
+    lidar_data_path << config_setting.lidar_path << std::setfill('0') << std::setw(6)
                     << cloudInd << ".bin";
     std::vector<float> lidar_data = read_lidar_data(lidar_data_path.str());
     if (lidar_data.size() == 0) {

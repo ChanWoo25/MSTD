@@ -92,6 +92,15 @@ void read_parameters(ros::NodeHandle &nh, ConfigSetting &config_setting) {
   nh.param<double>("normal_threshold", config_setting.normal_threshold_, 0.2);
   nh.param<double>("dis_threshold", config_setting.dis_threshold_, 0.5);
 
+  /* For specify file path (not in yaml config file, set these params in launch file) */
+  nh.param<std::string>("lidar_path", config_setting.lidar_path, "");
+  nh.param<std::string>("pose_path", config_setting.pose_path, "");
+  nh.param<std::string>("seq_name", config_setting.seq_name, "");
+  ROS_WARN_COND(config_setting.lidar_path.empty(), "lidar path is empty!");
+  ROS_WARN_COND(config_setting.pose_path.empty(), "pose path is empty!");
+  ROS_WARN_COND(config_setting.seq_name.empty(), "sequence name is empty!");
+  nh.param<bool>("is_benchmark", config_setting.is_benchmark, false);
+
   std::cout << "Sucessfully load parameters:" << std::endl;
   std::cout << "----------------Main Parameters-------------------"
             << std::endl;
@@ -104,6 +113,9 @@ void read_parameters(ros::NodeHandle &nh, ConfigSetting &config_setting) {
             << std::endl;
   std::cout << "maximum corners size: " << config_setting.maximum_corner_num_
             << std::endl;
+  std::cout << "lidar_path: " << config_setting.lidar_path << std::endl;
+  std::cout << "pose_path: " << config_setting.pose_path << std::endl;
+  std::cout << "seq_name: " << config_setting.seq_name << std::endl;
 }
 
 void load_pose_with_time(
@@ -476,6 +488,114 @@ void STDescManager::init_voxel_map(
   {
     iter_list[i]->second->init_octo_tree();
   }
+}
+
+auto STDescManager::getPseudoImage(
+  const std::vector<Eigen::Vector3d> & translations,
+  const std::vector<Eigen::Matrix3d> & rotations,
+  const pcl::PointCloud<pcl::PointXYZI>::Ptr & raw_cloud,
+  const pcl::PointCloud<pcl::PointXYZI>::Ptr & down_cloud)
+  -> cv::Mat
+{
+  constexpr int iSIZE = 400;
+  constexpr double dSIZE = 400.0;
+
+  // std::cout << "[getPseudoImage]" << std::endl;
+  Eigen::Vector3d cam_translation = translations[0];
+  Eigen::Matrix3d cam_rotation = rotations[0];
+
+  Eigen::Matrix3d extrinsic
+    = Eigen::AngleAxisd( 0.5*M_PI, Eigen::Vector3d::UnitY()).toRotationMatrix()
+    * Eigen::AngleAxisd(-0.5*M_PI, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+  raw_cloud->points[0].intensity;
+
+  Eigen::Matrix3d K = Eigen::Matrix3d::Identity();
+  K(0,0) = dSIZE / 2.0;
+  K(1,1) = dSIZE / 2.0;
+  K(0,2) = dSIZE / 2.0;
+  K(1,2) = dSIZE / 2.0;
+  cv::Mat raw_depth_img = cv::Mat(iSIZE, iSIZE, CV_64FC1, cv::Scalar(0.0));
+  cv::Mat down_depth_img = cv::Mat(iSIZE, iSIZE, CV_64FC1, cv::Scalar(0.0));
+  // cv::Mat raw_intensity_img = cv::Mat(iSIZE, iSIZE, CV_64FC1, cv::Scalar(0.0));
+  // cv::Mat down_intensity_img = cv::Mat(iSIZE, iSIZE, CV_64FC1, cv::Scalar(0.0));
+  // cv::Mat raw_reflectivity_img = cv::Mat(iSIZE, iSIZE, CV_64FC1, cv::Scalar(0.0));
+  // cv::Mat down_reflectivity_img = cv::Mat(iSIZE, iSIZE, CV_64FC1, cv::Scalar(0.0));
+
+  /* Voxelization */
+  uint plsize = raw_cloud->size();
+  for (uint i = 0; i < plsize; i++)
+  {
+    Eigen::Vector3d p_c(raw_cloud->points[i].x,
+                        raw_cloud->points[i].y,
+                        raw_cloud->points[i].z);
+    // std::cout << "p_w: " << p_c.transpose().eval() << std::endl;
+    Eigen::Vector3d p_cam
+      = K * extrinsic.transpose()
+      * cam_rotation.transpose()
+      * (p_c - cam_translation);
+    // std::cout << "p_c: " << p_cam.transpose().eval() << std::endl;
+
+    double depth = p_cam(2);
+    p_cam(0) /= p_cam(2);
+    p_cam(1) /= p_cam(2);
+    p_cam(2) /= p_cam(2);
+    if (depth >= 31.0) { depth = 0.0; }
+    else if (depth < 1.0) { depth = 0.0; }
+    depth = (depth - 1.0) / 30.0;
+
+    const int row = static_cast<int>(p_cam(1));
+    const int col = static_cast<int>(p_cam(0));
+    if (0 <= row && row < iSIZE && 0 <= col && col < iSIZE)
+    {
+      raw_depth_img.at<double>(row, col) = depth;
+    }
+  }
+
+  /* Voxelization */
+  for (size_t i = 0; i < down_cloud->size(); i++)
+  {
+    Eigen::Vector3d p_c(down_cloud->points[i].x,
+                        down_cloud->points[i].y,
+                        down_cloud->points[i].z);
+    // std::cout << "p_w: " << p_c.transpose().eval() << std::endl;
+    Eigen::Vector3d p_cam
+      = K * extrinsic.transpose()
+      * cam_rotation.transpose()
+      * (p_c - cam_translation);
+    // std::cout << "p_c: " << p_cam.transpose().eval() << std::endl;
+
+    double depth = p_cam(2);
+    p_cam(0) /= p_cam(2);
+    p_cam(1) /= p_cam(2);
+    p_cam(2) /= p_cam(2);
+    if (depth >= 31.0) { depth = 0.0; }
+    else if (depth < 1.0) { depth = 0.0; }
+    depth = (depth - 1.0) / 30.0;
+
+    const int row = static_cast<int>(p_cam(1));
+    const int col = static_cast<int>(p_cam(0));
+    if (0 <= row && row < iSIZE && 0 <= col && col < iSIZE)
+    {
+      down_depth_img.at<double>(row, col) = depth;
+    }
+  }
+
+
+  cv::Mat pallete
+    = cv::Mat(2 * iSIZE, 1 * iSIZE,
+              CV_64FC1, cv::Scalar(0.0));
+  raw_depth_img.copyTo( pallete(cv::Rect(0, 0  , iSIZE, iSIZE)));
+  down_depth_img.copyTo(pallete(cv::Rect(0, iSIZE, iSIZE, iSIZE)));
+  // raw_intensity_img
+  // down_intensity_img
+  // raw_reflectivity_img
+  // down_reflectivity_img
+
+  pallete *= 255.0;
+  pallete.convertTo(pallete, CV_8UC1);
+  cv::cvtColor(pallete, pallete, cv::COLOR_GRAY2BGR);
+  return pallete;
 }
 
 void STDescManager::build_connection(
