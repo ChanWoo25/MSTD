@@ -11,6 +11,7 @@
 	/>
   <param name="bag_path" type="string" value = "/data/datasets/dataset_std/park_avia/park1.bag"/>
   <param name="pose_path" type="string" value = "/data/datasets/dataset_std/park_avia/park1_pose.txt"/>
+  <param name="is_benchmark" type="string" value = "true"/>
 
   <group if="$(arg rviz)">
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find std_detector)/rviz_cfg/demo.rviz" />

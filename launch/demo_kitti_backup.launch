@@ -4,7 +4,7 @@
   <arg name="rviz" default="true" />
   <arg name="seq_id" default="00" />
 
-  <rosparam command="load" file="$(find std_detector)/config/config_kitti.yaml" />
+  <!-- <rosparam command="load" file="$(find std_detector)/config/config_kitti.yaml" /> -->
   <node
 		pkg="std_detector"
 		type="place_recognition_kitti"

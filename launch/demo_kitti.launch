@@ -1,0 +1,84 @@
+<launch>
+  <arg name="rviz" default="true" />
+   <!-- Pre process -->
+  <arg name="ds_size" default="0.25" />
+  <arg name="maximum_corner_num" default="100" />
+  <!-- Keypoints -->
+  <arg name="plane_detection_thre" default="0.01" />
+  <arg name="plane_merge_normal_thre" default="0.2" />
+  <arg name="voxel_size" default="2.0" />
+  <arg name="voxel_init_num" default="10" />
+  <arg name="proj_image_resolution" default="0.5" />
+  <arg name="proj_dis_min" default="0" />
+  <arg name="proj_dis_max" default="5" />
+  <arg name="corner_thre" default="10" />
+  <!-- std descriptor -->
+  <arg name="descriptor_near_num" default="10" />
+  <arg name="descriptor_min_len" default="2" />
+  <arg name="descriptor_max_len" default="50" />
+  <arg name="non_max_suppression_radius" default="2" />
+  <arg name="std_side_resolution" default="0.2" />
+  <!-- candidate search -->
+  <arg name="skip_near_num" default="50" />
+  <arg name="candidate_num" default="50" />
+  <arg name="sub_frame_num" default="10" />
+  <arg name="vertex_diff_threshold" default="0.5" />
+  <arg name="rough_dis_threshold" default="0.01" />
+  <arg name="normal_threshold" default="0.2" />
+  <arg name="dis_threshold" default="0.5" />
+  <arg name="icp_threshold" default="0.4" />
+  <!-- Files & Debug -->
+  <arg name="is_benchmark" default="False" />
+  <arg name="lidar_path" default="" />
+  <arg name="pose_path" default="" />
+  <arg name="seq_name" default="" />
+
+  <node
+		pkg="std_detector"
+		type="place_recognition_kitti"
+		name="place_recognition_kitti"
+		output="screen"
+	/>
+   <!-- Pre process -->
+  <param name="ds_size" type="double" value="$(arg ds_size)" />
+  <param name="maximum_corner_num" type="int" value="$(arg maximum_corner_num)" />
+  <!-- Keypoints -->
+  <param name="plane_detection_thre" type="double" value="$(arg plane_detection_thre)" />
+  <param name="plane_merge_normal_thre" type="double" value="$(arg plane_merge_normal_thre)" />
+  <param name="voxel_size" type="double" value="$(arg voxel_size)" />
+  <param name="voxel_init_num" type="int" value="$(arg voxel_init_num)" />
+  <param name="proj_image_resolution" type="double" value="$(arg proj_image_resolution)" />
+  <param name="proj_dis_min" type="double" value="$(arg proj_dis_min)" />
+  <param name="proj_dis_max" type="double" value="$(arg proj_dis_max)" />
+  <param name="corner_thre" type="double" value="$(arg corner_thre)" />
+  <!-- std descriptor -->
+  <param name="descriptor_near_num" type="int" value="$(arg descriptor_near_num)" />
+  <param name="descriptor_min_len" type="double" value="$(arg descriptor_min_len)" />
+  <param name="descriptor_max_len" type="double" value="$(arg descriptor_max_len)" />
+  <param name="non_max_suppression_radius" type="double" value="$(arg non_max_suppression_radius)" />
+  <param name="std_side_resolution" type="double" value="$(arg std_side_resolution)" />
+  <!-- candidate search -->
+  <param name="skip_near_num" type="int" value="$(arg skip_near_num)" />
+  <param name="candidate_num" type="int" value="$(arg candidate_num)" />
+  <param name="sub_frame_num" type="int" value="$(arg sub_frame_num)" />
+  <param name="vertex_diff_threshold" type="double" value="$(arg vertex_diff_threshold)" />
+  <param name="rough_dis_threshold" type="double" value="$(arg rough_dis_threshold)" />
+  <param name="normal_threshold" type="double" value="$(arg normal_threshold)" />
+  <param name="dis_threshold" type="double" value="$(arg dis_threshold)" />
+  <param name="icp_threshold" type="double" value="$(arg icp_threshold)" />
+  <!-- Files & Debug -->
+  <param name="is_benchmark" type="bool" value="$(arg is_benchmark)" />
+  <param name="lidar_path" type="string" value="$(arg lidar_path)" />
+  <param name="pose_path" type="string" value="$(arg pose_path)" />
+  <param name="seq_name" type="string" value="$(arg seq_name)" />
+
+  <!-- <param name="lidar_path" type="string" value = "/data/datasets/dataset_kitti/$(arg seq_id)/velodyne/"/>
+  <param name="pose_path" type="string" value = "/data/datasets/dataset_std/kitti/kitti$(arg seq_id).txt"/>
+  <param name="seq_name" type="string" value = "kitti$(arg seq_id)"/>
+  <param name="is_benchmark" type="string" value = "false"/> -->
+
+  <group if="$(arg rviz)">
+    <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find std_detector)/rviz_cfg/demo.rviz" />
+  </group>
+
+</launch>
