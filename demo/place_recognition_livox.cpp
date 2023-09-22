@@ -289,6 +289,24 @@ int main(int argc, char * argv[])
       {
         std_manager->key_positions_.push_back(translation);
         std_manager->key_times_.push_back(laser_time);
+
+        if (std_manager->key_positions_.size() >= config_setting.skip_near_num_)
+        {
+          for (int i = 0; i <= int(std_manager->key_positions_.size()) - config_setting.skip_near_num_; i++)
+          {
+            const auto & hist_position = std_manager->key_positions_[i];
+            const auto & curr_position = translation;
+            const auto dist = Eigen::Vector3d(hist_position - curr_position).norm();
+            if (dist <= 10.0)
+            {
+              auto hist_cloud = std_manager->key_cloud_vec_[i];
+              auto curr_cloud = save_key_cloud.makeShared();
+              const auto ratio = getOverlapRatio(
+                curr_cloud, hist_cloud, config_setting.voxel_size_, 10);
+              std::cout << "Overlap ratio: " << std::setprecision(2) << ratio << std::endl;
+            }
+          }
+        }
       }
 
       // publish

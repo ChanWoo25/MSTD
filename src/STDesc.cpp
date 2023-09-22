@@ -317,6 +317,81 @@ void publish_std_pairs(
   ma_line.markers.clear();
 }
 
+double getOverlapRatio(
+  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_a,
+  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_b,
+  const double & voxel_size,
+  const int & voxel_occupied_threshold)
+{
+  const auto vsz = voxel_size;
+  const auto vot = voxel_occupied_threshold;
+
+  std::unordered_map<std::string, int> voxels_a;
+  std::unordered_map<std::string, int> voxels_b;
+  auto getKey = [&vsz](
+    const double & x,
+    const double & y,
+    const double & z) {
+      return std::to_string(static_cast<int>(std::floor(x/vsz))) + ","
+           + std::to_string(static_cast<int>(std::floor(y/vsz))) + ","
+           + std::to_string(static_cast<int>(std::floor(z/vsz)));
+    };
+
+  int voxels_a_total = 0;
+  for (const auto & point: cloud_a->points)
+  {
+    const auto key = getKey(
+      point.x, point.y, point.z);
+    if (voxels_a.find(key) == voxels_a.end())
+    {
+      voxels_a[key] = 0;
+    }
+    else
+    {
+      voxels_a[key]++;
+      if (voxels_a[key] >= vot) {
+        voxels_a_total++;
+      }
+    }
+  }
+  int voxels_b_total = 0;
+  for (const auto & point: cloud_b->points)
+  {
+    const auto key = getKey(
+      point.x, point.y, point.z);
+    if (voxels_b.find(key) == voxels_b.end())
+    {
+      voxels_b[key] = 0;
+    }
+    else
+    {
+      voxels_b[key]++;
+      if (voxels_b[key] >= vot) {
+        voxels_b_total++;
+      }
+    }
+  }
+
+  int overlap_count = 0;
+  for (const auto & voxel_a: voxels_a)
+  {
+    auto it_b = voxels_b.find(voxel_a.first);
+    if (it_b != voxels_b.end())
+    {
+      const auto & voxel_a_cnt = voxel_a.second;
+      const auto & voxel_b_cnt = it_b->second;
+      if (voxel_a_cnt >= vot &&
+          voxel_b_cnt >= vot)
+      {
+        overlap_count++;
+      }
+    }
+  }
+
+  return static_cast<double>(overlap_count)
+       / static_cast<double>(voxels_a_total);
+}
+
 void STDescManager::GenerateSTDescs(
   pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
   std::vector<STDesc> & stds_vec)

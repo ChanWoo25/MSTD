@@ -273,6 +273,13 @@ struct PlaneSolver {
   Eigen::Vector3d target_normal;
 };
 
+// Return (overlap / cloud_a_total) ratio.
+double getOverlapRatio(
+  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_a,
+  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_b,
+  const double & voxel_size,
+  const int & voxel_occupied_threshold);
+
 class STDescManager {
 public:
   STDescManager() = default;
