@@ -6,8 +6,8 @@
   <rosparam command="load" file="$(arg config_path)" />
   <node
 		pkg="std_detector"
-		type="place_recognition_livox"
-		name="place_recognition_livox"
+		type="pseudo_loop_gt_detector"
+		name="pseudo_loop_gt_detector"
 		output="screen"
 	/>
 

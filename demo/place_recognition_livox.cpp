@@ -303,21 +303,21 @@ int main(int argc, char * argv[])
             {
               auto hist_cloud = std_manager->key_cloud_vec_[i];
               auto curr_cloud = save_key_cloud.makeShared();
-              const auto ratio = getOverlapRatio(
-                curr_cloud, hist_cloud, config_setting.voxel_size_, 1);
+              // const auto ratio = getOverlapRatio(
+              //   curr_cloud, hist_cloud, config_setting.voxel_size_, config_setting.valid_voxel_thres_);
 
-              if (ratio >= 0.5)
-              {
-                stop = true;
-                std::cout << "Ratio is " << ratio << "at " << i << ", Loop GT!!!!\n" << std::endl;
-              }
+              // if (ratio >= 0.5)
+              // {
+              //   stop = true;
+              //   std::cout << "Ratio is " << ratio << "at " << i << ", Loop GT!!!!\n" << std::endl;
+              // }
             }
           }
 
-          if (stop)
-          {
-            getchar();
-          }
+          // if (stop)
+          // {
+          //   getchar();
+          // }
         }
       }
 

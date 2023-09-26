@@ -51,71 +51,71 @@ void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
   }
 }
 
-void read_parameters(ros::NodeHandle &nh, ConfigSetting &config_setting) {
-
+void read_parameters(
+  ros::NodeHandle & nh,
+  ConfigSetting & cfg)
+{
   // pre-preocess
-  nh.param<double>("ds_size", config_setting.ds_size_, 0.5);
-  nh.param<int>("maximum_corner_num", config_setting.maximum_corner_num_, 100);
+  nh.param<double>("ds_size", cfg.ds_size_, 0.5);
+  nh.param<int>("maximum_corner_num", cfg.maximum_corner_num_, 100);
 
   // key points
   nh.param<double>("plane_merge_normal_thre",
-                   config_setting.plane_merge_normal_thre_, 0.1);
-  nh.param<double>("plane_detection_thre", config_setting.plane_detection_thre_,
+                   cfg.plane_merge_normal_thre_, 0.1);
+  nh.param<double>("plane_detection_thre", cfg.plane_detection_thre_,
                    0.01);
-  nh.param<double>("voxel_size", config_setting.voxel_size_, 2.0);
-  nh.param<int>("voxel_init_num", config_setting.voxel_init_num_, 10);
+  nh.param<double>("voxel_size", cfg.voxel_size_, 2.0);
+  nh.param<int>("voxel_init_num", cfg.voxel_init_num_, 10);
   nh.param<double>("proj_image_resolution",
-                   config_setting.proj_image_resolution_, 0.5);
-  nh.param<double>("proj_dis_min", config_setting.proj_dis_min_, 0);
-  nh.param<double>("proj_dis_max", config_setting.proj_dis_max_, 2);
-  nh.param<double>("corner_thre", config_setting.corner_thre_, 10);
+                   cfg.proj_image_resolution_, 0.5);
+  nh.param<double>("proj_dis_min", cfg.proj_dis_min_, 0);
+  nh.param<double>("proj_dis_max", cfg.proj_dis_max_, 2);
+  nh.param<double>("corner_thre", cfg.corner_thre_, 10);
 
   // std descriptor
-  nh.param<int>("descriptor_near_num", config_setting.descriptor_near_num_, 10);
-  nh.param<double>("descriptor_min_len", config_setting.descriptor_min_len_, 2);
-  nh.param<double>("descriptor_max_len", config_setting.descriptor_max_len_,
+  nh.param<int>("descriptor_near_num", cfg.descriptor_near_num_, 10);
+  nh.param<double>("descriptor_min_len", cfg.descriptor_min_len_, 2);
+  nh.param<double>("descriptor_max_len", cfg.descriptor_max_len_,
                    50);
   nh.param<double>("non_max_suppression_radius",
-                   config_setting.non_max_suppression_radius_, 2.0);
-  nh.param<double>("std_side_resolution", config_setting.std_side_resolution_,
+                   cfg.non_max_suppression_radius_, 2.0);
+  nh.param<double>("std_side_resolution", cfg.std_side_resolution_,
                    0.2);
 
   // candidate search
-  nh.param<int>("skip_near_num", config_setting.skip_near_num_, 50);
-  nh.param<int>("candidate_num", config_setting.candidate_num_, 50);
-  nh.param<int>("sub_frame_num", config_setting.sub_frame_num_, 10);
-  nh.param<double>("rough_dis_threshold", config_setting.rough_dis_threshold_,
+  nh.param<int>("skip_near_num", cfg.skip_near_num_, 50);
+  nh.param<int>("candidate_num", cfg.candidate_num_, 50);
+  nh.param<int>("sub_frame_num", cfg.sub_frame_num_, 10);
+  nh.param<double>("rough_dis_threshold", cfg.rough_dis_threshold_,
                    0.01);
   nh.param<double>("vertex_diff_threshold",
-                   config_setting.vertex_diff_threshold_, 0.5);
-  nh.param<double>("icp_threshold", config_setting.icp_threshold_, 0.5);
-  nh.param<double>("normal_threshold", config_setting.normal_threshold_, 0.2);
-  nh.param<double>("dis_threshold", config_setting.dis_threshold_, 0.5);
-
+                   cfg.vertex_diff_threshold_, 0.5);
+  nh.param<double>("icp_threshold", cfg.icp_threshold_, 0.5);
+  nh.param<double>("normal_threshold", cfg.normal_threshold_, 0.2);
+  nh.param<double>("dis_threshold", cfg.dis_threshold_, 0.5);
+  /* for pseudo loop gt */
+  nh.param<int>("valid_voxel_thres", cfg.valid_voxel_thres_, 5);
   /* For specify file path (not in yaml config file, set these params in launch file) */
-  nh.param<std::string>("lidar_path", config_setting.lidar_path, "");
-  nh.param<std::string>("pose_path", config_setting.pose_path, "");
-  nh.param<std::string>("seq_name", config_setting.seq_name, "");
-  ROS_WARN_COND(config_setting.lidar_path.empty(), "lidar path is empty!");
-  ROS_WARN_COND(config_setting.pose_path.empty(), "pose path is empty!");
-  ROS_WARN_COND(config_setting.seq_name.empty(), "sequence name is empty!");
-  nh.param<bool>("is_benchmark", config_setting.is_benchmark, false);
+  nh.param<std::string>("lidar_path", cfg.lidar_path, "");
+  nh.param<std::string>("pose_path", cfg.pose_path, "");
+  nh.param<std::string>("seq_name", cfg.seq_name, "");
+  nh.param<std::string>("save_pseudo_loop_gt_fn", cfg.save_pseudo_loop_gt_fn, "");
+  ROS_WARN_COND(cfg.lidar_path.empty(), "lidar path is empty!");
+  ROS_WARN_COND(cfg.pose_path.empty(), "pose path is empty!");
+  ROS_WARN_COND(cfg.seq_name.empty(), "sequence name is empty!");
+  ROS_WARN_COND(cfg.save_pseudo_loop_gt_fn.empty(), "loop_gt_fn name is empty!");
+  nh.param<bool>("is_benchmark", cfg.is_benchmark, false);
 
   std::cout << "Sucessfully load parameters:" << std::endl;
-  std::cout << "----------------Main Parameters-------------------"
-            << std::endl;
-  std::cout << "voxel size:" << config_setting.voxel_size_ << std::endl;
-  std::cout << "loop detection threshold: " << config_setting.icp_threshold_
-            << std::endl;
-  std::cout << "sub-frame number: " << config_setting.sub_frame_num_
-            << std::endl;
-  std::cout << "candidate number: " << config_setting.candidate_num_
-            << std::endl;
-  std::cout << "maximum corners size: " << config_setting.maximum_corner_num_
-            << std::endl;
-  std::cout << "lidar_path: " << config_setting.lidar_path << std::endl;
-  std::cout << "pose_path: " << config_setting.pose_path << std::endl;
-  std::cout << "seq_name: " << config_setting.seq_name << std::endl;
+  std::cout << "----------------Main Parameters-------------------" << std::endl;
+  std::cout << "voxel size:" << cfg.voxel_size_ << std::endl;
+  std::cout << "loop detection threshold: " << cfg.icp_threshold_ << std::endl;
+  std::cout << "sub-frame number: " << cfg.sub_frame_num_ << std::endl;
+  std::cout << "candidate number: " << cfg.candidate_num_ << std::endl;
+  std::cout << "maximum corners size: " << cfg.maximum_corner_num_ << std::endl;
+  std::cout << "lidar_path: " << cfg.lidar_path << std::endl;
+  std::cout << "pose_path: " << cfg.pose_path << std::endl;
+  std::cout << "seq_name: " << cfg.seq_name << std::endl;
 }
 
 void load_pose_with_time(
@@ -317,11 +317,13 @@ void publish_std_pairs(
   ma_line.markers.clear();
 }
 
-double getOverlapRatio(
+void getOverlapRatio(
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_a,
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_b,
   const double & voxel_size,
-  const int & voxel_occupied_threshold)
+  const int & voxel_occupied_threshold,
+  double & max_ratio_over_tota,
+  double & max_ratio_over_unio)
 {
   const auto vsz = voxel_size;
   const auto vot = voxel_occupied_threshold;
@@ -395,7 +397,10 @@ double getOverlapRatio(
   const auto d_voxels_a_total = static_cast<double>(voxels_a_total);
   const auto d_voxels_b_total = static_cast<double>(voxels_b_total);
 
-  return d_overlap_count / (d_voxels_a_total + d_voxels_b_total - d_overlap_count);
+  const auto ratio_over_tota = d_overlap_count / d_voxels_a_total;
+  const auto ratio_over_unio = d_overlap_count / (d_voxels_a_total + d_voxels_b_total - d_overlap_count);
+  if (max_ratio_over_tota < ratio_over_tota) { max_ratio_over_tota = ratio_over_tota; }
+  if (max_ratio_over_unio < ratio_over_unio) { max_ratio_over_unio = ratio_over_unio; }
 
   // const auto ratio_a = static_cast<double>(overlap_count)
   //                  / static_cast<double>(voxels_a_total);

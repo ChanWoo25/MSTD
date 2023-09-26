@@ -61,11 +61,14 @@ typedef struct ConfigSetting {
   double icp_threshold_               {-1.};
   double normal_threshold_            {-1.};
   double dis_threshold_               {-1.};
+  /* for pseudo loop gt */
+  int    valid_voxel_thres_           {-1};
   /* Debugging */
   bool is_benchmark                   {false};
   std::string lidar_path              {""};
   std::string pose_path               {""};
   std::string seq_name                {""};
+  std::string save_pseudo_loop_gt_fn  {""};
 } ConfigSetting;
 
 // Structure for Stabel Triangle Descriptor
@@ -275,11 +278,13 @@ struct PlaneSolver {
 };
 
 // Return (overlap / cloud_a_total) ratio.
-double getOverlapRatio(
+void getOverlapRatio(
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_a,
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_b,
   const double & voxel_size,
-  const int & voxel_occupied_threshold);
+  const int & voxel_occupied_threshold,
+  double & max_ratio_over_tota,
+  double & max_ratio_over_unio);
 
 class STDescManager {
 public:

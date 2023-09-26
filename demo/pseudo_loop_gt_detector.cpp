@@ -37,7 +37,7 @@ int main(int argc, char * argv[])
   read_parameters(nh, cfg);
 
   auto dataloader
-    = std::make_unique<DataLoader>(cfg, "park_avia");
+    = std::make_unique<DataLoader>(cfg, cfg.seq_name);
 
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
@@ -91,6 +91,7 @@ int main(int argc, char * argv[])
   int triggle_loop_num = 0;
 
   /* # Create Log File */
+  std::ofstream plgt_file(cfg.save_pseudo_loop_gt_fn);
   std::ofstream ofile;
   std::string log_fn = "/data/results/std_result_park2.csv";
   std::string fn = "/data/results/std_consumption_park2.csv";
@@ -127,6 +128,9 @@ int main(int argc, char * argv[])
   constexpr double reflectivity_resolution = 0.1;
   std::array<int, 1000> reflectivities{0};
 
+  /* Pseudo Loop GT */
+  std::vector<double> vec_ratio_over_tota;
+  std::vector<double> vec_ratio_over_unio;
   while (ros::ok() && dataloader->ok())
   {
     // BOOST_FOREACH (rosbag::MessageInstance const m, view)
@@ -190,17 +194,17 @@ int main(int argc, char * argv[])
       if (is_keyframe)
       {
         keyCloudInd++;
-        cv::Mat pseudo_img
-          = std_manager->getPseudoImage(
-              tmp_translations,
-              tmp_rotations,
-              raw_cloud,
-              temp_cloud);
-        std::stringstream ss;
-        ss << std::fixed;
-        ss.precision(6);
-        ss << "/data/results/stdesc/park1_both/" << laser_time << ".png";
-        cv::imwrite(ss.str(), pseudo_img);
+        // cv::Mat pseudo_img
+        //   = std_manager->getPseudoImage(
+        //       tmp_translations,
+        //       tmp_rotations,
+        //       raw_cloud,
+        //       temp_cloud);
+        // std::stringstream ss;
+        // ss << std::fixed;
+        // ss.precision(6);
+        // ss << "/data/results/stdesc/park1_both/" << laser_time << ".png";
+        // cv::imwrite(ss.str(), pseudo_img);
         tmp_translations.clear();
         tmp_rotations.clear();
       }
@@ -256,6 +260,8 @@ int main(int argc, char * argv[])
           loop_std_pair);
       }
 
+
+      std::cout << "Debug \n";
       if (search_result.first > 0 && !cfg.is_benchmark)
       {
         std::cout << "[Loop Detection] triggle loop: " << keyCloudInd
@@ -265,6 +271,8 @@ int main(int argc, char * argv[])
       auto t_query_end = std::chrono::high_resolution_clock::now();
       querying_time.push_back(time_inc(t_query_end, t_query_begin));
 
+
+      std::cout << "Debug \n";
       // step3. Add descriptors to the database
       auto t_map_update_begin = std::chrono::high_resolution_clock::now();
       std_manager->AddSTDescs(stds_vec);
@@ -284,6 +292,8 @@ int main(int argc, char * argv[])
 
       std_manager->key_cloud_vec_.push_back(save_key_cloud.makeShared());
 
+
+      std::cout << "Debug \n";
       // if (cfg.is_benchmark)
       if (true)
       {
@@ -292,7 +302,8 @@ int main(int argc, char * argv[])
 
         if (std_manager->key_positions_.size() >= cfg.skip_near_num_)
         {
-          bool stop = false;
+          double max_ratio_over_tota = -1.0;
+          double max_ratio_over_unio = -1.0;
           for (int i = 0; i <= int(std_manager->key_positions_.size()) - cfg.skip_near_num_; i++)
           {
             const auto & hist_position = std_manager->key_positions_[i];
@@ -302,23 +313,25 @@ int main(int argc, char * argv[])
             {
               auto hist_cloud = std_manager->key_cloud_vec_[i];
               auto curr_cloud = save_key_cloud.makeShared();
-              const auto ratio = getOverlapRatio(
-                curr_cloud, hist_cloud, cfg.voxel_size_, 1);
-
-              if (ratio >= 0.5)
-              {
-                stop = true;
-                std::cout << "Ratio is " << ratio << "at " << i << ", Loop GT!!!!\n" << std::endl;
-              }
+              getOverlapRatio(
+                curr_cloud, hist_cloud,
+                cfg.voxel_size_, cfg.valid_voxel_thres_,
+                max_ratio_over_tota,
+                max_ratio_over_unio);
             }
           }
-
-          if (stop)
-          {
-            getchar();
-          }
+          vec_ratio_over_tota.push_back(max_ratio_over_tota);
+          vec_ratio_over_unio.push_back(max_ratio_over_unio);
+        }
+        else
+        {
+          vec_ratio_over_tota.push_back(0.0);
+          vec_ratio_over_unio.push_back(0.0);
         }
       }
+
+
+      std::cout << "Debug \n";
 
       // publish
       sensor_msgs::PointCloud2 pub_cloud;
@@ -331,6 +344,9 @@ int main(int argc, char * argv[])
         pub_cloud.header.frame_id = "camera_init";
         pubCurrentCorner.publish(pub_cloud);
       }
+
+
+      std::cout << "Debug \n";
 
       if (search_result.first > 0
           || cfg.is_benchmark)
@@ -409,6 +425,24 @@ int main(int argc, char * argv[])
               << mean_descriptor_time + mean_query_time + mean_update_time
               << "ms" << std::endl;
     break;
+  }
+
+  // std::vector<double> vec_ratio_over_tota;
+  // std::vector<double> vec_ratio_over_unio;
+  if (plgt_file.is_open())
+  {
+    for (size_t i = 0; i < vec_ratio_over_tota.size(); i++)
+    {
+      plgt_file << std::fixed;
+      plgt_file.precision(4);
+      plgt_file << vec_ratio_over_tota[i] << ','
+                << vec_ratio_over_unio[i] << '\n';
+    }
+    plgt_file.close();
+  }
+  else
+  {
+    std::cerr << "Something Wrong!!" << std::endl;
   }
 
 
