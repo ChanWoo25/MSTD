@@ -349,7 +349,7 @@ double getOverlapRatio(
     else
     {
       voxels_a[key]++;
-      if (voxels_a[key] >= vot) {
+      if (voxels_a[key] == vot) {
         voxels_a_total++;
       }
     }
@@ -366,7 +366,7 @@ double getOverlapRatio(
     else
     {
       voxels_b[key]++;
-      if (voxels_b[key] >= vot) {
+      if (voxels_b[key] == vot) {
         voxels_b_total++;
       }
     }
@@ -388,8 +388,21 @@ double getOverlapRatio(
     }
   }
 
-  return static_cast<double>(overlap_count)
-       / static_cast<double>(voxels_a_total);
+  // std::cout << "voxels_a_total: " << voxels_a_total << std::endl;
+  // std::cout << "voxels_b_total: " << voxels_b_total << std::endl;
+  // std::cout << "overlap_count: " << overlap_count << std::endl;
+  const auto d_overlap_count = static_cast<double>(overlap_count);
+  const auto d_voxels_a_total = static_cast<double>(voxels_a_total);
+  const auto d_voxels_b_total = static_cast<double>(voxels_b_total);
+
+  return d_overlap_count / (d_voxels_a_total + d_voxels_b_total - d_overlap_count);
+
+  // const auto ratio_a = static_cast<double>(overlap_count)
+  //                  / static_cast<double>(voxels_a_total);
+  // const auto ratio_b = static_cast<double>(overlap_count)
+  //                  / static_cast<double>(voxels_b_total);
+  // // std::cout << "Overlap ratio: " << std::setprecision(2) << ratio << std::endl;
+  // return std::min(ratio_a, ratio_b);
 }
 
 void STDescManager::GenerateSTDescs(

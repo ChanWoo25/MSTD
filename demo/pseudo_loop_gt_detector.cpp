@@ -7,6 +7,8 @@
 #include <fstream>
 #include <opencv2/highgui.hpp>
 
+#include <memory>
+
 int findPoseIndexUsingTime(std::vector<double> &time_list, double &time) {
   double time_inc = 10000000000;
   int min_index = -1;
@@ -29,19 +31,13 @@ int findPoseIndexUsingTime(std::vector<double> &time_list, double &time) {
 
 int main(int argc, char * argv[])
 {
-  ros::init(argc, argv, "demo_kitti");
+  ros::init(argc, argv, "pseudo_loop_gt_detector");
   ros::NodeHandle nh;
-  std::string bag_path = "";
-  std::string pose_path = "";
-  std::string is_benchmark;
-  nh.param<std::string>("bag_path", bag_path, "");
-  nh.param<std::string>("pose_path", pose_path, "");
-  nh.param<std::string>("is_benchmark", is_benchmark, "");
+  ConfigSetting cfg;
+  read_parameters(nh, cfg);
 
-  ConfigSetting config_setting;
-  read_parameters(nh, config_setting);
-  config_setting.is_benchmark =
-    (is_benchmark == "true") ? (true) : (false);
+  auto dataloader
+    = std::make_unique<DataLoader>(cfg, "park_avia");
 
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
@@ -76,11 +72,11 @@ int main(int argc, char * argv[])
   ros::Rate slow_loop(10);
   std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> poses_vec;
   std::vector<double> times_vec;
-  load_pose_with_time(pose_path, poses_vec, times_vec);
+  load_pose_with_time(cfg.pose_path, poses_vec, times_vec);
   std::cout << "Sucessfully load pose with number: " << poses_vec.size()
             << std::endl;
 
-  STDescManager * std_manager = new STDescManager(config_setting);
+  STDescManager * std_manager = new STDescManager(cfg);
 
   size_t cloudInd = 0;
   size_t keyCloudInd = 0;
@@ -98,7 +94,7 @@ int main(int argc, char * argv[])
   std::ofstream ofile;
   std::string log_fn = "/data/results/std_result_park2.csv";
   std::string fn = "/data/results/std_consumption_park2.csv";
-  if (config_setting.is_benchmark)
+  if (cfg.is_benchmark)
   {
     ofile.open(log_fn);
     if (ofile.is_open())
@@ -107,21 +103,21 @@ int main(int argc, char * argv[])
     }
   }
 
-  std::fstream file_;
-  file_.open(bag_path, std::ios::in);
-  if (!file_) {
-    std::cout << "File " << bag_path << " does not exit" << std::endl;
-  }
-  ROS_INFO("Start to load the rosbag %s", bag_path.c_str());
-  rosbag::Bag bag;
-  try {
-    bag.open(bag_path, rosbag::bagmode::Read);
-  } catch (rosbag::BagException e) {
-    ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
-  }
-  std::vector<std::string> types;
-  types.push_back(std::string("sensor_msgs/PointCloud2"));
-  rosbag::View view(bag, rosbag::TypeQuery(types));
+  // std::fstream file_;
+  // file_.open(cfg.lidar_path, std::ios::in);
+  // if (!file_) {
+  //   std::cout << "File " << cfg.lidar_path << " does not exit" << std::endl;
+  // }
+  // ROS_INFO("Start to load the rosbag %s", cfg.lidar_path.c_str());
+  // rosbag::Bag bag;
+  // try {
+  //   bag.open(cfg.lidar_path, rosbag::bagmode::Read);
+  // } catch (rosbag::BagException e) {
+  //   ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
+  // }
+  // std::vector<std::string> types;
+  // types.push_back(std::string("sensor_msgs/PointCloud2"));
+  // rosbag::View view(bag, rosbag::TypeQuery(types));
 
   std::vector<Eigen::Vector3d> tmp_translations;
   std::vector<Eigen::Matrix3d> tmp_rotations;
@@ -131,23 +127,26 @@ int main(int argc, char * argv[])
   constexpr double reflectivity_resolution = 0.1;
   std::array<int, 1000> reflectivities{0};
 
-  while (ros::ok())
+  while (ros::ok() && dataloader->ok())
   {
-    BOOST_FOREACH (rosbag::MessageInstance const m, view)
+    // BOOST_FOREACH (rosbag::MessageInstance const m, view)
     {
-      if (!ros::ok()) { break; }
+      // if (!ros::ok()) { break; }
 
       /* 0. Data check & Conversion */
-      sensor_msgs::PointCloud2::ConstPtr cloud_ptr =
-          m.instantiate<sensor_msgs::PointCloud2>();
-      pcl::PCLPointCloud2 pcl_pc;
-      pcl::PointCloud<pcl::PointXYZI> cloud;
-      if (cloud_ptr == nullptr) { continue; }
-      pcl_conversions::toPCL(*cloud_ptr, pcl_pc);
-      pcl::fromPCLPointCloud2(pcl_pc, cloud);
+      // sensor_msgs::PointCloud2::ConstPtr cloud_ptr =
+      //     m.instantiate<sensor_msgs::PointCloud2>();
+      // pcl::PCLPointCloud2 pcl_pc;
+      // pcl::PointCloud<pcl::PointXYZI> cloud;
+      // if (cloud_ptr == nullptr) { continue; }
+      // pcl_conversions::toPCL(*cloud_ptr, pcl_pc);
+      // pcl::fromPCLPointCloud2(pcl_pc, cloud);
+      auto tcloud = dataloader->next();
+      auto & laser_time = tcloud.first;
+      auto & cloud = tcloud.second;
 
       /* 1. Variables Initialization */
-      double laser_time = cloud_ptr->header.stamp.toSec();
+      // double laser_time = cloud_ptr->header.stamp.toSec();
       static double init_time = -1.0;
       if (init_time < 0.0) { init_time = laser_time; }
       int pose_index = findPoseIndexUsingTime(times_vec, laser_time);
@@ -178,7 +177,7 @@ int main(int argc, char * argv[])
       for (auto pv : cloud.points) {
         raw_cloud->points.push_back(pv);
       }
-      down_sampling_voxel(cloud, config_setting.ds_size_);
+      down_sampling_voxel(cloud, cfg.ds_size_);
       for (auto pv : cloud.points) {
         temp_cloud->points.push_back(pv);
       }
@@ -186,7 +185,7 @@ int main(int argc, char * argv[])
       /* 2. If not keyframe, pub odom & continue */
       cloudInd++;
       const bool is_keyframe
-        = (cloudInd % config_setting.sub_frame_num_ == 0) &&
+        = (cloudInd % cfg.sub_frame_num_ == 0) &&
           (cloudInd != 0);
       if (is_keyframe)
       {
@@ -207,7 +206,7 @@ int main(int argc, char * argv[])
       }
       else
       {
-        if (config_setting.is_benchmark == false)
+        if (cfg.is_benchmark == false)
         {
           pub_odom(translation, rotation);
           // nav_msgs::Odometry odom;
@@ -226,7 +225,7 @@ int main(int argc, char * argv[])
         continue;
       }
 
-      if (config_setting.is_benchmark == false)
+      if (cfg.is_benchmark == false)
       {
         std::cout.precision(4);
         std::cout << std::fixed << "[Time] (" << (laser_time) << ")Key Frame id:" << keyCloudInd
@@ -248,7 +247,7 @@ int main(int argc, char * argv[])
       loop_transform.first << 0, 0, 0;
       loop_transform.second = Eigen::Matrix3d::Identity();
       std::vector<std::pair<STDesc, STDesc>> loop_std_pair;
-      if (keyCloudInd > config_setting.skip_near_num_)
+      if (keyCloudInd > cfg.skip_near_num_)
       {
         std_manager->SearchLoop(
           stds_vec,
@@ -257,7 +256,7 @@ int main(int argc, char * argv[])
           loop_std_pair);
       }
 
-      if (search_result.first > 0 && !config_setting.is_benchmark)
+      if (search_result.first > 0 && !cfg.is_benchmark)
       {
         std::cout << "[Loop Detection] triggle loop: " << keyCloudInd
                   << "--" << search_result.first
@@ -285,16 +284,16 @@ int main(int argc, char * argv[])
 
       std_manager->key_cloud_vec_.push_back(save_key_cloud.makeShared());
 
-      // if (config_setting.is_benchmark)
+      // if (cfg.is_benchmark)
       if (true)
       {
         std_manager->key_positions_.push_back(translation);
         std_manager->key_times_.push_back(laser_time);
 
-        if (std_manager->key_positions_.size() >= config_setting.skip_near_num_)
+        if (std_manager->key_positions_.size() >= cfg.skip_near_num_)
         {
           bool stop = false;
-          for (int i = 0; i <= int(std_manager->key_positions_.size()) - config_setting.skip_near_num_; i++)
+          for (int i = 0; i <= int(std_manager->key_positions_.size()) - cfg.skip_near_num_; i++)
           {
             const auto & hist_position = std_manager->key_positions_[i];
             const auto & curr_position = translation;
@@ -304,7 +303,7 @@ int main(int argc, char * argv[])
               auto hist_cloud = std_manager->key_cloud_vec_[i];
               auto curr_cloud = save_key_cloud.makeShared();
               const auto ratio = getOverlapRatio(
-                curr_cloud, hist_cloud, config_setting.voxel_size_, 1);
+                curr_cloud, hist_cloud, cfg.voxel_size_, 1);
 
               if (ratio >= 0.5)
               {
@@ -323,7 +322,7 @@ int main(int argc, char * argv[])
 
       // publish
       sensor_msgs::PointCloud2 pub_cloud;
-      if (!config_setting.is_benchmark)
+      if (!cfg.is_benchmark)
       {
         pcl::toROSMsg(*temp_cloud, pub_cloud);
         pub_cloud.header.frame_id = "camera_init";
@@ -334,9 +333,9 @@ int main(int argc, char * argv[])
       }
 
       if (search_result.first > 0
-          || config_setting.is_benchmark)
+          || cfg.is_benchmark)
       {
-        if (config_setting.is_benchmark)
+        if (cfg.is_benchmark)
         {
           ofile << std::fixed;
           ofile.precision(6);
@@ -374,7 +373,7 @@ int main(int argc, char * argv[])
       raw_cloud->clear();
 
 
-      if (!config_setting.is_benchmark)
+      if (!cfg.is_benchmark)
       {
         pub_odom(translation, rotation);
         // getchar();
@@ -415,7 +414,7 @@ int main(int argc, char * argv[])
 
 
   /* # Close Log File */
-  if (config_setting.is_benchmark && ofile.is_open())
+  if (cfg.is_benchmark && ofile.is_open())
   {
     ofile.close();
     if (!ofile.is_open())
@@ -426,7 +425,7 @@ int main(int argc, char * argv[])
 
   /* # Create Time Consumption Analysis File */
   std::ofstream time_outfile;
-  if (config_setting.is_benchmark)
+  if (cfg.is_benchmark)
   {
     time_outfile.open(fn);
 
@@ -450,7 +449,7 @@ int main(int argc, char * argv[])
   }
 
   /* # Create reflectivity & intensity log */
-  if (config_setting.is_benchmark)
+  if (cfg.is_benchmark)
   {
     std::ofstream ofile2;
     ofile2.open("/data/results/histogram01.csv");

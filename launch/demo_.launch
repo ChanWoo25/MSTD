@@ -2,7 +2,7 @@
 <!-- Launch file for Livox AVIA LiDAR -->
 
   <arg name="rviz" default="true" />
-  <arg name="config_path" default="true" />
+  <arg name="config_path" default="" />
   <rosparam command="load" file="$(find std_detector)/config/config_livox.yaml" />
   <node
 		pkg="std_detector"

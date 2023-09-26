@@ -8,9 +8,14 @@
 #include <ceres/rotation.h>
 #include <fstream>
 #include <mutex>
+#include <memory>
 #include <pcl/common/io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <ros/ros.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <nav_msgs/Odometry.h>
 #include <sstream>
 #include <stdio.h>
 #include <string>
@@ -26,45 +31,41 @@
 #define MAX_FRAME_N 20000
 
 typedef struct ConfigSetting {
-  int stop_skip_enable_ = 0;
+  int stop_skip_enable_               {-1};
   /* for point cloud pre-preocess*/
-  double ds_size_ = 0.5;
-  int maximum_corner_num_ = 30;
-
+  double ds_size_                     {-1.};
+  int    maximum_corner_num_          {-1};
   /* for key points*/
-  double plane_merge_normal_thre_;
-  double plane_merge_dis_thre_;
-  double plane_detection_thre_ = 0.01;
-  double plane_detection_thre_second_ = 0.05; // 논문 상 두번째 Threshold... 안 쓰임...?
-  double voxel_size_ = 1.0;
-  int voxel_init_num_ = 10;
-  double proj_image_resolution_ = 0.5;
-  double proj_dis_min_ = 0.2;
-  double proj_dis_max_ = 5;
-  double corner_thre_ = 10;
-
+  double plane_merge_normal_thre_     {-1.};
+  double plane_merge_dis_thre_        {-1.};
+  double plane_detection_thre_        {-1.};
+  double plane_detection_thre_second_ {-1.};
+  double voxel_size_                  {-1.};
+  int    voxel_init_num_              {-1};
+  double proj_image_resolution_       {-1.};
+  double proj_dis_min_                {-1.};
+  double proj_dis_max_                {-1.};
+  double corner_thre_                 {-1.};
   /* for STD */
-  int descriptor_near_num_ = 10;
-  double descriptor_min_len_ = 1;
-  double descriptor_max_len_ = 10;
-  double non_max_suppression_radius_ = 3.0;
-  double std_side_resolution_ = 0.2;
-
+  int    descriptor_near_num_         {-1};
+  double descriptor_min_len_          {-1.};
+  double descriptor_max_len_          {-1.};
+  double non_max_suppression_radius_  {-1.};
+  double std_side_resolution_         {-1.};
   /* for place recognition*/
-  int skip_near_num_ = 50;
-  int candidate_num_ = 50;
-  int sub_frame_num_ = 10;
-  double rough_dis_threshold_ = 0.03;
-  double vertex_diff_threshold_ = 0.7;
-  double icp_threshold_ = 0.5;
-  double normal_threshold_ = 0.1;
-  double dis_threshold_ = 0.3;
-
+  int    skip_near_num_               {-1};
+  int    candidate_num_               {-1};
+  int    sub_frame_num_               {-1};
+  double rough_dis_threshold_         {-1.};
+  double vertex_diff_threshold_       {-1.};
+  double icp_threshold_               {-1.};
+  double normal_threshold_            {-1.};
+  double dis_threshold_               {-1.};
   /* Debugging */
-  bool is_benchmark;
-  std::string lidar_path;
-  std::string pose_path;
-  std::string seq_name;
+  bool is_benchmark                   {false};
+  std::string lidar_path              {""};
+  std::string pose_path               {""};
+  std::string seq_name                {""};
 } ConfigSetting;
 
 // Structure for Stabel Triangle Descriptor
@@ -395,4 +396,83 @@ private:
       const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
       const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
       const std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform);
-};
+}; // class STDescManager
+
+class DataLoader
+{
+public:
+  DataLoader()=delete;
+  DataLoader(
+    const ConfigSetting & cfg,
+    const std::string dataset_type)
+    : dataset_type_(dataset_type)
+  {
+    if (dataset_type == "park_avia")
+    {
+      std::ifstream file_check(cfg.lidar_path);
+      if (!file_check) {
+        std::cerr << "[DataLoader] File " << cfg.lidar_path << " does not exit" << std::endl;
+        exit(1);
+      }
+      bag_ = std::make_unique<rosbag::Bag>(
+        cfg.lidar_path,
+        rosbag::bagmode::Read);
+
+      std::vector<std::string> types;
+      types.push_back(std::string("sensor_msgs/PointCloud2"));
+      view_ = std::make_unique<rosbag::View>((*bag_), rosbag::TypeQuery(types));
+      view_it_ = view_->begin();
+    }
+    else
+    {
+        std::cerr << "[DataLoader] Wrong dataset!\n";
+      exit(1);
+    }
+  }
+  ~DataLoader()=default;
+
+  bool ok()
+  {
+    if (dataset_type_ == "park_avia")
+    {
+      return view_it_ != view_->end();
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  auto next()->std::pair<double, pcl::PointCloud<pcl::PointXYZI>>
+  {
+    if (dataset_type_ == "park_avia")
+    {
+      /* 0. Data check & Conversion */
+      sensor_msgs::PointCloud2::ConstPtr cloud_ptr =
+          view_it_->instantiate<sensor_msgs::PointCloud2>();
+      double laser_time = cloud_ptr->header.stamp.toSec();
+      pcl::PCLPointCloud2 pcl_pc;
+      pcl::PointCloud<pcl::PointXYZI> cloud;
+      if (cloud_ptr == nullptr) { return {-1.0, cloud}; }
+      pcl_conversions::toPCL(*cloud_ptr, pcl_pc);
+      pcl::fromPCLPointCloud2(pcl_pc, cloud);
+      ++view_it_;
+      return {laser_time, cloud};
+    }
+    else
+    {
+      std::cerr << "Wrong!\n";
+      return {-1.0, pcl::PointCloud<pcl::PointXYZI>()};
+    }
+  }
+
+private:
+  std::string dataset_type_;
+  /* For loading avia_park dataset */
+  std::string avia_park_bagfile;
+  std::unique_ptr<rosbag::Bag>  bag_;
+  std::unique_ptr<rosbag::View> view_;
+  rosbag::View::iterator view_it_;
+  /* For loading kitti dataset */
+  std::string kitti_dir;
+}; // class DataLoader
