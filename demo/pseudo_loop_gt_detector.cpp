@@ -260,8 +260,6 @@ int main(int argc, char * argv[])
           loop_std_pair);
       }
 
-
-      std::cout << "Debug \n";
       if (search_result.first > 0 && !cfg.is_benchmark)
       {
         std::cout << "[Loop Detection] triggle loop: " << keyCloudInd
@@ -271,8 +269,6 @@ int main(int argc, char * argv[])
       auto t_query_end = std::chrono::high_resolution_clock::now();
       querying_time.push_back(time_inc(t_query_end, t_query_begin));
 
-
-      std::cout << "Debug \n";
       // step3. Add descriptors to the database
       auto t_map_update_begin = std::chrono::high_resolution_clock::now();
       std_manager->AddSTDescs(stds_vec);
@@ -292,8 +288,6 @@ int main(int argc, char * argv[])
 
       std_manager->key_cloud_vec_.push_back(save_key_cloud.makeShared());
 
-
-      std::cout << "Debug \n";
       // if (cfg.is_benchmark)
       if (true)
       {
@@ -330,9 +324,6 @@ int main(int argc, char * argv[])
         }
       }
 
-
-      std::cout << "Debug \n";
-
       // publish
       sensor_msgs::PointCloud2 pub_cloud;
       if (!cfg.is_benchmark)
@@ -344,9 +335,6 @@ int main(int argc, char * argv[])
         pub_cloud.header.frame_id = "camera_init";
         pubCurrentCorner.publish(pub_cloud);
       }
-
-
-      std::cout << "Debug \n";
 
       if (search_result.first > 0
           || cfg.is_benchmark)
@@ -388,7 +376,6 @@ int main(int argc, char * argv[])
       temp_cloud->clear();
       raw_cloud->clear();
 
-
       if (!cfg.is_benchmark)
       {
         pub_odom(translation, rotation);
@@ -408,24 +395,23 @@ int main(int argc, char * argv[])
 
       loop.sleep();
     }
-    double mean_descriptor_time =
-        std::accumulate(descriptor_time.begin(), descriptor_time.end(), 0) *
-        1.0 / descriptor_time.size();
-    double mean_query_time =
-        std::accumulate(querying_time.begin(), querying_time.end(), 0) * 1.0 /
-        querying_time.size();
-    double mean_update_time =
-        std::accumulate(update_time.begin(), update_time.end(), 0) * 1.0 /
-        update_time.size();
-    std::cout << "Total key frame number:" << keyCloudInd
-              << ", loop number:" << triggle_loop_num << std::endl;
-    std::cout << "Mean time for descriptor extraction: " << mean_descriptor_time
-              << "ms, query: " << mean_query_time
-              << "ms, update: " << mean_update_time << "ms, total: "
-              << mean_descriptor_time + mean_query_time + mean_update_time
-              << "ms" << std::endl;
-    break;
   }
+  double mean_descriptor_time =
+      std::accumulate(descriptor_time.begin(), descriptor_time.end(), 0) *
+      1.0 / descriptor_time.size();
+  double mean_query_time =
+      std::accumulate(querying_time.begin(), querying_time.end(), 0) * 1.0 /
+      querying_time.size();
+  double mean_update_time =
+      std::accumulate(update_time.begin(), update_time.end(), 0) * 1.0 /
+      update_time.size();
+  std::cout << "Total key frame number:" << keyCloudInd
+            << ", loop number:" << triggle_loop_num << std::endl;
+  std::cout << "Mean time for descriptor extraction: " << mean_descriptor_time
+            << "ms, query: " << mean_query_time
+            << "ms, update: " << mean_update_time << "ms, total: "
+            << mean_descriptor_time + mean_query_time + mean_update_time
+            << "ms" << std::endl;
 
   // std::vector<double> vec_ratio_over_tota;
   // std::vector<double> vec_ratio_over_unio;
