@@ -1,25 +1,19 @@
 import os
-RESULT_DIR = '/data/results/MSTD/230926_pseudo_loop_gt_detection'
+RESULT_DIR = '/data/results/MSTD/231003_except_trees'
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 DESCRIPTION = """\
 # description here
 """
-commit = '1196c59ddbd46027b534e8124272dd70a75d0a7d'
 
-# Iterate parameters you want here
-paths = []
-for seq in [1, 2]:
-    for valid_voxel_thres in [1, 3, 5, 10]:
-        seq_name = 'park_avia'
-        bag_path = '/data/datasets/dataset_std/park_avia/park%d.bag'%seq
-        pose_path = '/data/datasets/dataset_std/park_avia/park%d_pose.txt'%seq
-        SAVE_DIR = f"{RESULT_DIR}/{seq_name}_{seq:02d}_vvt={valid_voxel_thres}"
-        os.makedirs(SAVE_DIR, exist_ok=True)
-
-        config = \
+def write_config_file(seq_name:str, seq_id:int, z_max:float):
+    SAVE_DIR = f"{RESULT_DIR}/{seq_name}_{seq_id:02d}-z_max={z_max}"
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    bag_path  = '/data/datasets/dataset_std/park_avia/park%d.bag'%seq_id
+    pose_path = '/data/datasets/dataset_std/park_avia/park%d_pose.txt'%seq_id
+    config = \
 f"""\
-# Experiment commit {commit}
+# Experiment commit: not updated
 {DESCRIPTION}
 # pre process
 ds_size: 0.25
@@ -48,16 +42,21 @@ rough_dis_threshold: 0.015
 normal_threshold: 0.2
 dis_threshold: 0.5
 icp_threshold: 0.2
-# For pseudo loop gt
-valid_voxel_thres: {valid_voxel_thres}
 # need to be written
+log_dir: "{SAVE_DIR}"
 lidar_path: "{bag_path}"
 pose_path: "{pose_path}"
-seq_name: {seq_name}
-save_pseudo_loop_gt_fn: "{SAVE_DIR}/pseudo_loop_gt.txt"
-is_benchmark: False
+seq_name: "{seq_name}"
+align: true
+seq_id: 1
+z_max: {z_max}
+is_benchmark: True
 """
-        save_fn = f'{SAVE_DIR}/config.yaml'
-        with open(save_fn, 'w') as f:
-            print(f'Write on {save_fn}')
-            f.write(config)
+    save_fn = f'{SAVE_DIR}/config.yaml'
+    with open(save_fn, 'w') as f:
+        print(f'Write on {save_fn}')
+        f.write(config)
+
+for seq_id in [1, 2]:
+    for z_max in [10.0, 12.0, 15.0, 20.0]:
+        write_config_file('park_avia', seq_id, z_max)

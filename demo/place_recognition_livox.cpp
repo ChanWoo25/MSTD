@@ -31,17 +31,9 @@ int main(int argc, char * argv[])
 {
   ros::init(argc, argv, "demo_kitti");
   ros::NodeHandle nh;
-  std::string bag_path = "";
-  std::string pose_path = "";
-  std::string is_benchmark;
-  nh.param<std::string>("bag_path", bag_path, "");
-  nh.param<std::string>("pose_path", pose_path, "");
-  nh.param<std::string>("is_benchmark", is_benchmark, "");
 
-  ConfigSetting config_setting;
-  read_parameters(nh, config_setting);
-  config_setting.is_benchmark =
-    (is_benchmark == "true") ? (true) : (false);
+  ConfigSetting cfg;
+  read_parameters(nh, cfg);
 
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
@@ -76,11 +68,11 @@ int main(int argc, char * argv[])
   ros::Rate slow_loop(10);
   std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> poses_vec;
   std::vector<double> times_vec;
-  load_pose_with_time(pose_path, poses_vec, times_vec);
+  load_pose_with_time(cfg.pose_path, poses_vec, times_vec, cfg);
   std::cout << "Sucessfully load pose with number: " << poses_vec.size()
             << std::endl;
 
-  STDescManager * std_manager = new STDescManager(config_setting);
+  STDescManager * std_manager = new STDescManager(cfg);
 
   size_t cloudInd = 0;
   size_t keyCloudInd = 0;
@@ -96,9 +88,9 @@ int main(int argc, char * argv[])
 
   /* # Create Log File */
   std::ofstream ofile;
-  std::string log_fn = "/data/results/std_result_park2.csv";
-  std::string fn = "/data/results/std_consumption_park2.csv";
-  if (config_setting.is_benchmark)
+  std::string log_fn = cfg.log_dir + "/result.csv";
+  std::string consumption_log_fn = cfg.log_dir + "/consumption.csv";
+  if (cfg.is_benchmark)
   {
     ofile.open(log_fn);
     if (ofile.is_open())
@@ -108,14 +100,15 @@ int main(int argc, char * argv[])
   }
 
   std::fstream file_;
-  file_.open(bag_path, std::ios::in);
+
+  file_.open(cfg.lidar_path, std::ios::in);
   if (!file_) {
-    std::cout << "File " << bag_path << " does not exit" << std::endl;
+    std::cout << "File " << cfg.lidar_path << " does not exit" << std::endl;
   }
-  ROS_INFO("Start to load the rosbag %s", bag_path.c_str());
+  ROS_INFO("Start to load the rosbag %s", cfg.lidar_path.c_str());
   rosbag::Bag bag;
   try {
-    bag.open(bag_path, rosbag::bagmode::Read);
+    bag.open(cfg.lidar_path, rosbag::bagmode::Read);
   } catch (rosbag::BagException e) {
     ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
   }
@@ -155,6 +148,8 @@ int main(int argc, char * argv[])
       Eigen::Matrix3d rotation = poses_vec[pose_index].second;
       tmp_translations.push_back(translation);
       tmp_rotations.push_back(rotation);
+
+      pcl::PointCloud<pcl::PointXYZI> filtered_cloud;
       for (size_t i = 0; i < cloud.size(); i++)
       {
         Eigen::Vector3d pv = point2vec(cloud.points[i]);
@@ -178,36 +173,41 @@ int main(int argc, char * argv[])
       for (auto pv : cloud.points) {
         raw_cloud->points.push_back(pv);
       }
-      down_sampling_voxel(cloud, config_setting.ds_size_);
+      down_sampling_voxel(cloud, cfg.ds_size_);
       for (auto pv : cloud.points) {
+        if (pv.z >= cfg.z_max) { continue; }
         temp_cloud->points.push_back(pv);
       }
 
       /* 2. If not keyframe, pub odom & continue */
       cloudInd++;
       const bool is_keyframe
-        = (cloudInd % config_setting.sub_frame_num_ == 0) &&
+        = (cloudInd % cfg.sub_frame_num_ == 0) &&
           (cloudInd != 0);
       if (is_keyframe)
       {
         keyCloudInd++;
-        cv::Mat pseudo_img
-          = std_manager->getPseudoImage(
-              tmp_translations,
-              tmp_rotations,
-              raw_cloud,
-              temp_cloud);
-        std::stringstream ss;
-        ss << std::fixed;
-        ss.precision(6);
-        ss << "/data/results/stdesc/park1_both/" << laser_time << ".png";
-        cv::imwrite(ss.str(), pseudo_img);
+        constexpr bool create_img = false;
+        if (create_img)
+        {
+          cv::Mat pseudo_img
+            = std_manager->getPseudoImage(
+                tmp_translations,
+                tmp_rotations,
+                raw_cloud,
+                temp_cloud);
+          std::stringstream ss;
+          ss << std::fixed;
+          ss.precision(6);
+          ss << "/data/results/stdesc/park1_both/" << laser_time << ".png";
+          cv::imwrite(ss.str(), pseudo_img);
+        }
         tmp_translations.clear();
         tmp_rotations.clear();
       }
       else
       {
-        if (config_setting.is_benchmark == false)
+        if (cfg.is_benchmark == false)
         {
           pub_odom(translation, rotation);
           // nav_msgs::Odometry odom;
@@ -226,7 +226,7 @@ int main(int argc, char * argv[])
         continue;
       }
 
-      if (config_setting.is_benchmark == false)
+      if (cfg.is_benchmark == false)
       {
         std::cout.precision(4);
         std::cout << std::fixed << "[Time] (" << (laser_time) << ")Key Frame id:" << keyCloudInd
@@ -248,7 +248,7 @@ int main(int argc, char * argv[])
       loop_transform.first << 0, 0, 0;
       loop_transform.second = Eigen::Matrix3d::Identity();
       std::vector<std::pair<STDesc, STDesc>> loop_std_pair;
-      if (keyCloudInd > config_setting.skip_near_num_)
+      if (keyCloudInd > cfg.skip_near_num_)
       {
         std_manager->SearchLoop(
           stds_vec,
@@ -257,7 +257,7 @@ int main(int argc, char * argv[])
           loop_std_pair);
       }
 
-      if (search_result.first > 0 && !config_setting.is_benchmark)
+      if (search_result.first > 0 && !cfg.is_benchmark)
       {
         std::cout << "[Loop Detection] triggle loop: " << keyCloudInd
                   << "--" << search_result.first
@@ -285,45 +285,15 @@ int main(int argc, char * argv[])
 
       std_manager->key_cloud_vec_.push_back(save_key_cloud.makeShared());
 
-      // if (config_setting.is_benchmark)
-      if (true)
+      if (cfg.is_benchmark)
       {
         std_manager->key_positions_.push_back(translation);
         std_manager->key_times_.push_back(laser_time);
-
-        if (std_manager->key_positions_.size() >= config_setting.skip_near_num_)
-        {
-          bool stop = false;
-          for (int i = 0; i <= int(std_manager->key_positions_.size()) - config_setting.skip_near_num_; i++)
-          {
-            const auto & hist_position = std_manager->key_positions_[i];
-            const auto & curr_position = translation;
-            const auto dist = Eigen::Vector3d(hist_position - curr_position).norm();
-            if (dist <= 10.0)
-            {
-              auto hist_cloud = std_manager->key_cloud_vec_[i];
-              auto curr_cloud = save_key_cloud.makeShared();
-              // const auto ratio = getOverlapRatio(
-              //   curr_cloud, hist_cloud, config_setting.voxel_size_, config_setting.valid_voxel_thres_);
-
-              // if (ratio >= 0.5)
-              // {
-              //   stop = true;
-              //   std::cout << "Ratio is " << ratio << "at " << i << ", Loop GT!!!!\n" << std::endl;
-              // }
-            }
-          }
-
-          // if (stop)
-          // {
-          //   getchar();
-          // }
-        }
       }
 
       // publish
       sensor_msgs::PointCloud2 pub_cloud;
-      if (!config_setting.is_benchmark)
+      if (!cfg.is_benchmark)
       {
         pcl::toROSMsg(*temp_cloud, pub_cloud);
         pub_cloud.header.frame_id = "camera_init";
@@ -334,9 +304,9 @@ int main(int argc, char * argv[])
       }
 
       if (search_result.first > 0
-          || config_setting.is_benchmark)
+          || cfg.is_benchmark)
       {
-        if (config_setting.is_benchmark)
+        if (cfg.is_benchmark)
         {
           ofile << std::fixed;
           ofile.precision(6);
@@ -367,14 +337,14 @@ int main(int argc, char * argv[])
           pubMatchedCorner.publish(pub_cloud);
           publish_std_pairs(loop_std_pair, pubSTD);
           slow_loop.sleep();
-          // getchar();
+          getchar();
         }
       }
       temp_cloud->clear();
       raw_cloud->clear();
 
 
-      if (!config_setting.is_benchmark)
+      if (!cfg.is_benchmark)
       {
         pub_odom(translation, rotation);
         // getchar();
@@ -412,10 +382,8 @@ int main(int argc, char * argv[])
     break;
   }
 
-
-
   /* # Close Log File */
-  if (config_setting.is_benchmark && ofile.is_open())
+  if (cfg.is_benchmark && ofile.is_open())
   {
     ofile.close();
     if (!ofile.is_open())
@@ -426,9 +394,9 @@ int main(int argc, char * argv[])
 
   /* # Create Time Consumption Analysis File */
   std::ofstream time_outfile;
-  if (config_setting.is_benchmark)
+  if (cfg.is_benchmark)
   {
-    time_outfile.open(fn);
+    time_outfile.open(consumption_log_fn);
 
     std::cout << "descriptor_time.size : " << descriptor_time.size() << std::endl;
     std::cout << "querying_time.size   : " << querying_time.size() << std::endl;
@@ -436,7 +404,7 @@ int main(int argc, char * argv[])
 
     if (time_outfile.is_open())
     {
-      std::cout << "consumption log file '" << fn << "' is opend!" << std::endl;
+      std::cout << "consumption log file '" << consumption_log_fn << "' is opend!" << std::endl;
       for (size_t i = 0; i < descriptor_time.size(); i++)
       {
         time_outfile << std::fixed;
@@ -450,20 +418,20 @@ int main(int argc, char * argv[])
   }
 
   /* # Create reflectivity & intensity log */
-  if (config_setting.is_benchmark)
-  {
-    std::ofstream ofile2;
-    ofile2.open("/data/results/histogram01.csv");
-    if (ofile2.is_open())
-    {
-      for (size_t i = 0; i < 1000UL; i++)
-      {
-        ofile2 << intensities[i] << ','
-               << reflectivities[i] << '\n';
-      }
-    }
-    ofile2.close();
-  }
+  // if (cfg.is_benchmark)
+  // {
+  //   std::ofstream ofile2;
+  //   ofile2.open("/data/results/histogram01.csv");
+  //   if (ofile2.is_open())
+  //   {
+  //     for (size_t i = 0; i < 1000UL; i++)
+  //     {
+  //       ofile2 << intensities[i] << ','
+  //              << reflectivities[i] << '\n';
+  //     }
+  //   }
+  //   ofile2.close();
+  // }
 
   return 0;
 }

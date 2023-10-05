@@ -99,6 +99,10 @@ void read_parameters(
   nh.param<std::string>("lidar_path", cfg.lidar_path, "");
   nh.param<std::string>("pose_path", cfg.pose_path, "");
   nh.param<std::string>("seq_name", cfg.seq_name, "");
+  nh.param<std::string>("log_dir", cfg.log_dir, "");
+  nh.param<bool>("align", cfg.align, false);
+  nh.param<int>("seq_id", cfg.seq_id, 0);
+  nh.param<double>("z_max", cfg.z_max, 9999.99);
   nh.param<std::string>("save_pseudo_loop_gt_fn", cfg.save_pseudo_loop_gt_fn, "");
   ROS_WARN_COND(cfg.lidar_path.empty(), "lidar path is empty!");
   ROS_WARN_COND(cfg.pose_path.empty(), "pose path is empty!");
@@ -116,12 +120,37 @@ void read_parameters(
   std::cout << "lidar_path: " << cfg.lidar_path << std::endl;
   std::cout << "pose_path: " << cfg.pose_path << std::endl;
   std::cout << "seq_name: " << cfg.seq_name << std::endl;
+  std::cout << "seq_id: " << cfg.seq_id << std::endl;
 }
 
 void load_pose_with_time(
-    const std::string &pose_file,
-    std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> &poses_vec,
-    std::vector<double> &times_vec) {
+  const std::string &pose_file,
+  std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> &poses_vec,
+  std::vector<double> &times_vec,
+  ConfigSetting & cfg)
+{
+  Eigen::Matrix3d pcaRT = Eigen::Matrix3d::Identity();
+  if (cfg.align)
+  {
+    if (cfg.seq_id == 1)
+    {
+      pcaRT(0,0) = -0.1464712; pcaRT(0,1) = 0.98921027; pcaRT(0,2) = -0.00303869;
+      pcaRT(1,0) =  0.9874713; pcaRT(1,1) = 0.14603004; pcaRT(1,2) = -0.05979572;
+      pcaRT(2,0) =  0.0587068; pcaRT(2,1) = 0.01175897; pcaRT(2,2) =  0.99820601;
+    }
+    else if (cfg.seq_id == 2)
+    {
+      pcaRT(0,0) =  0.14564089; pcaRT(0,1) = 0.98932085; pcaRT(0,2) = -0.00574336;
+      pcaRT(1,0) = -0.98859487; pcaRT(1,1) = 0.14530422; pcaRT(1,2) = -0.03958364;
+      pcaRT(2,0) = -0.03832638; pcaRT(2,1) = 0.01144285; pcaRT(2,2) =  0.99919975;
+    }
+    else
+    {
+      std::cerr << "Wrong seq_id. Choose 1 or 2" << std::endl;
+      exit(1);
+    }
+  }
+
   times_vec.clear();
   poses_vec.clear();
   std::ifstream fin(pose_file);
@@ -152,8 +181,8 @@ void load_pose_with_time(
           Eigen::Quaterniond q(temp_matrix[6], temp_matrix[3], temp_matrix[4],
                                temp_matrix[5]);
           std::pair<Eigen::Vector3d, Eigen::Matrix3d> single_pose;
-          single_pose.first = translation;
-          single_pose.second = q.toRotationMatrix();
+          single_pose.first  = pcaRT * translation;
+          single_pose.second = pcaRT * q.toRotationMatrix();
           poses_vec.push_back(single_pose);
         }
         number++;

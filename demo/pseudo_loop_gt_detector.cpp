@@ -72,7 +72,7 @@ int main(int argc, char * argv[])
   ros::Rate slow_loop(10);
   std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> poses_vec;
   std::vector<double> times_vec;
-  load_pose_with_time(cfg.pose_path, poses_vec, times_vec);
+  load_pose_with_time(cfg.pose_path, poses_vec, times_vec, cfg);
   std::cout << "Sucessfully load pose with number: " << poses_vec.size()
             << std::endl;
 

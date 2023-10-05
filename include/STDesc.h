@@ -65,9 +65,13 @@ typedef struct ConfigSetting {
   int    valid_voxel_thres_           {-1};
   /* Debugging */
   bool is_benchmark                   {false};
+  std::string log_dir                 {""};
   std::string lidar_path              {""};
   std::string pose_path               {""};
   std::string seq_name                {""};
+  bool        align                   {false};
+  double      z_max                   {9999.99};
+  int         seq_id                  {0};
   std::string save_pseudo_loop_gt_fn  {""};
 } ConfigSetting;
 
@@ -223,9 +227,10 @@ void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
                          double voxel_size);
 
 void load_pose_with_time(
-    const std::string &pose_file,
-    std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> &poses_vec,
-    std::vector<double> &times_vec);
+  const std::string & pose_file,
+  std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> & poses_vec,
+  std::vector<double> & times_vec,
+  ConfigSetting & cfg);
 
 void read_parameters(ros::NodeHandle &nh, ConfigSetting &config_setting);
 

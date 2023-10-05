@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
   std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> key_poses_vec;
 
   std::vector<double> times_vec;
-  load_pose_with_time(pose_path, poses_vec, times_vec);
+  load_pose_with_time(pose_path, poses_vec, times_vec, config_setting);
   std::cout << "Sucessfully load pose with number: " << poses_vec.size()
             << std::endl;
   std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> cloud_vec;
