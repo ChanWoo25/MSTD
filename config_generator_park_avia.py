@@ -1,5 +1,5 @@
 import os
-RESULT_DIR = '/data/results/MSTD/231003_except_trees'
+RESULT_DIR = '/data/results/MSTD/231007_on_wsl2'
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 DESCRIPTION = """\
@@ -58,5 +58,5 @@ is_benchmark: True
         f.write(config)
 
 for seq_id in [1, 2]:
-    for z_max in [10.0, 12.0, 15.0, 20.0]:
+    for z_max in [15.0]:
         write_config_file('park_avia', seq_id, z_max)
