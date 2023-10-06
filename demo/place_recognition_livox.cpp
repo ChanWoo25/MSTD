@@ -337,11 +337,15 @@ int main(int argc, char * argv[])
           pubMatchedCorner.publish(pub_cloud);
           publish_std_pairs(loop_std_pair, pubSTD);
           slow_loop.sleep();
-          getchar();
         }
       }
       temp_cloud->clear();
       raw_cloud->clear();
+
+      if (!cfg.is_benchmark)
+      {
+        getchar();
+      }
 
 
       if (!cfg.is_benchmark)

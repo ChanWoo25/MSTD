@@ -181,8 +181,8 @@ void load_pose_with_time(
           Eigen::Quaterniond q(temp_matrix[6], temp_matrix[3], temp_matrix[4],
                                temp_matrix[5]);
           std::pair<Eigen::Vector3d, Eigen::Matrix3d> single_pose;
-          single_pose.first  = pcaRT * translation;
-          single_pose.second = pcaRT * q.toRotationMatrix();
+          single_pose.first  = pcaRT.transpose() * translation;
+          single_pose.second = pcaRT.transpose() * q.toRotationMatrix();
           poses_vec.push_back(single_pose);
         }
         number++;
