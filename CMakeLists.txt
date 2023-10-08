@@ -63,6 +63,13 @@ include_directories(
   # "/usr/include/opencv4"
 )
 
+add_executable(estimate_poses_using_icp demo/estimate_poses_using_icp.cpp src/STDesc.cpp )
+target_link_libraries(estimate_poses_using_icp
+        ${catkin_LIBRARIES}
+        ${PCL_LIBRARIES}
+        ${OpenCV_LIBS}
+        ${CERES_LIBRARIES})
+
 add_executable(pseudo_loop_gt_detector demo/pseudo_loop_gt_detector.cpp src/STDesc.cpp )
 target_link_libraries(pseudo_loop_gt_detector
         ${catkin_LIBRARIES}

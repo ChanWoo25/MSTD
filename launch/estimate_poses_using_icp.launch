@@ -1,0 +1,17 @@
+<launch>
+<!-- Launch file for Livox AVIA LiDAR -->
+
+  <arg name="rviz" default="true" />
+  <arg name="config_path" default="/root/ws_std/src/MSTD/config/estimate_poses_using_icp.yaml" />
+  <rosparam command="load" file="$(arg config_path)" />
+  <node
+		pkg="std_detector"
+		type="estimate_poses_using_icp"
+		name="estimate_poses_using_icp"
+		output="screen"
+	/>
+
+  <group if="$(arg rviz)">
+    <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find std_detector)/rviz_cfg/icp_config.rviz" />
+  </group>
+</launch>
