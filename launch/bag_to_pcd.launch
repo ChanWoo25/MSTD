@@ -2,12 +2,10 @@
 <!-- Launch file for Livox AVIA LiDAR -->
 
   <arg name="rviz" default="false" />
-  <!-- <arg name="config_path" default="/root/ws_std/src/MSTD/config/estimate_poses_using_icp.yaml" /> -->
-  <!-- <rosparam command="load" file="$(arg config_path)" /> -->
   <node
 		pkg="std_detector"
-		type="estimate_poses_using_icp"
-		name="estimate_poses_using_icp"
+		type="bag_to_pcd"
+		name="bag_to_pcd"
 		output="screen"
 	/>
 

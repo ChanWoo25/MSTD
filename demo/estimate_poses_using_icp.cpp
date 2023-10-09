@@ -1,7 +1,14 @@
 #include <include/STDesc.h>
+#include <include/MyDebugVisualizer.hpp>
 
 #include <pcl/point_types.h>
 #include <pcl/registration/icp.h>
+#include <pcl/common/angles.h> // for pcl::deg2rad
+#include <pcl/features/normal_3d.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/console/parse.h>
+
 #include <nav_msgs/Odometry.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <ros/ros.h>
@@ -10,111 +17,156 @@
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
 #include <opencv2/highgui.hpp>
+#include <fmt/core.h>
+#include <fmt/format.h>
 
+#include <iostream>
 #include <fstream>
+#include <thread>
+#include <cstdlib>
 
-int findPoseIndexUsingTime(std::vector<double> &time_list, double &time) {
-  double time_inc = 10000000000;
-  int min_index = -1;
-  for (size_t i = 0; i < time_list.size(); i++) {
-    if (fabs(time_list[i] - time) < time_inc) {
-      time_inc = fabs(time_list[i] - time);
-      min_index = i;
-    }
-  }
-  if (time_inc > 0.5) {
-    std::string msg = "The timestamp between poses and point cloud is:" +
-                      std::to_string(time_inc) + "s. Please check it!";
-    ROS_ERROR_STREAM(msg.c_str());
-    std::cout << "Timestamp for point cloud:" << time << std::endl;
-    std::cout << "Timestamp for pose:" << time_list[min_index] << std::endl;
-    exit(-1);
-  }
-  return min_index;
-}
+using namespace std::chrono_literals;
+
+std::string g_lidar_path {"/data/datasets/dataset_std/park_avia/park1.bag"};
+std::string g_save_path {"/data/results/MSTD/test"};
+std::string g_method {"icp"};
+double      g_max_correspondence_distance {1.0};
+int         g_max_iteration {1000};
+
+// void read_config(
+//   ros::NodeHandle & nh)
+// {
+//   nh.param<std::string>("lidar_path", g_lidar_path, "/data/datasets/dataset_std/park_avia/park1.bag");
+//   nh.param<std::string>("save_path", g_save_path, "/data/results/MSTD/test");
+//   nh.param<std::string>("method", g_method, "online");
+//   nh.param<double>("max_correspondence_distance", g_max_correspondence_distance, 1.0);
+//   nh.param<int>("max_iteration", g_max_iteration, 1000);
+
+//   ROS_WARN_COND(g_method != "icp" && g_method != "gicp", "");
+//   ROS_WARN_COND(g_lidar_path.empty(), "");
+//   ROS_WARN_COND(g_save_path.empty(), "");
+//   ROS_WARN_COND(g_max_correspondence_distance <= 0.0, "");
+//   ROS_WARN_COND(g_max_iteration < 5, "");
+// }
+
+// auto simpleVis(
+//   pcl::PointCloud<pcl::PointXYZI>::ConstPtr cloud)
+//   -> std::shared_ptr<pcl::visualization::PCLVisualizer>
+// {
+//   // --------------------------------------------
+//   // -----Open 3D viewer and add point cloud-----
+//   // --------------------------------------------
+//   auto viewer = std::make_shared<pcl::visualization::PCLVisualizer>("3D Viewer");
+//   viewer->setBackgroundColor (0, 0, 0);
+//   viewer->addPointCloud<pcl::PointXYZI>(cloud, "sample cloud");
+//   viewer->setPointCloudRenderingProperties(
+//     pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+//     1, "sample cloud");
+//   viewer->addCoordinateSystem (1.0);
+//   viewer->initCameraParameters ();
+//   viewer->setShowFPS(true);
+//   return viewer;
+// }
+
+// int findPoseIndexUsingTime(std::vector<double> &time_list, double &time) {
+//   double time_inc = 10000000000;
+//   int min_index = -1;
+//   for (size_t i = 0; i < time_list.size(); i++) {
+//     if (fabs(time_list[i] - time) < time_inc) {
+//       time_inc = fabs(time_list[i] - time);
+//       min_index = i;
+//     }
+//   }
+//   if (time_inc > 0.5) {
+//     std::string msg = "The timestamp between poses and point cloud is:" +
+//                       std::to_string(time_inc) + "s. Please check it!";
+//     ROS_ERROR_STREAM(msg.c_str());
+//     std::cout << "Timestamp for point cloud:" << time << std::endl;
+//     std::cout << "Timestamp for pose:" << time_list[min_index] << std::endl;
+//     exit(-1);
+//   }
+//   return min_index;
+// }
 
 int main(int argc, char * argv[])
 {
   ros::init(argc, argv, "estimate_poses_using_icp");
   ros::NodeHandle nh;
 
-  ConfigSetting cfg;
-  read_parameters(nh, cfg);
+  // ConfigSetting cfg;
+  // read_parameters(nh, cfg);
 
-  ros::Publisher pubOdomAftMapped =
-      nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
-  ros::Publisher pubCureentCloud =
-      nh.advertise<sensor_msgs::PointCloud2>("/cloud_current", 100);
-  ros::Publisher pubCurrentCorner =
-      nh.advertise<sensor_msgs::PointCloud2>("/cloud_key_points", 100);
-  ros::Publisher pubMatchedCloud =
-      nh.advertise<sensor_msgs::PointCloud2>("/cloud_matched", 100);
-  ros::Publisher pubMatchedCorner =
-      nh.advertise<sensor_msgs::PointCloud2>("/cloud_matched_key_points", 100);
-  ros::Publisher pubSTD =
-      nh.advertise<visualization_msgs::MarkerArray>("descriptor_line", 10);
+  // read_config(nh);
 
-  const auto pub_odom = [&pubOdomAftMapped](
-    const Eigen::Vector3d & trans,
-    const Eigen::Matrix3d & rot) {
-      nav_msgs::Odometry odom;
-      odom.header.frame_id = "camera_init";
-      odom.pose.pose.position.x = trans[0];
-      odom.pose.pose.position.y = trans[1];
-      odom.pose.pose.position.z = trans[2];
-      Eigen::Quaterniond q(rot);
-      odom.pose.pose.orientation.w = q.w();
-      odom.pose.pose.orientation.x = q.x();
-      odom.pose.pose.orientation.y = q.y();
-      odom.pose.pose.orientation.z = q.z();
-      pubOdomAftMapped.publish(odom);
-    };
+  auto command = fmt::format("mkdir -p {}", g_save_path);
+  ROS_INFO(command.c_str());
+  system(command.c_str());
+
+  ROS_INFO("Visualizer Start");
+  MyDebugVisualizer<pcl::PointXYZI> my_visualizer("online");
+  ROS_INFO("Visualizer Pass");
+
+  // const auto pub_odom = [&pubOdomAftMapped](
+  //   const Eigen::Vector3d & trans,
+  //   const Eigen::Matrix3d & rot) {
+  //     nav_msgs::Odometry odom;
+  //     odom.header.frame_id = "camera_init";
+  //     odom.pose.pose.position.x = trans[0];
+  //     odom.pose.pose.position.y = trans[1];
+  //     odom.pose.pose.position.z = trans[2];
+  //     Eigen::Quaterniond q(rot);
+  //     odom.pose.pose.orientation.w = q.w();
+  //     odom.pose.pose.orientation.x = q.x();
+  //     odom.pose.pose.orientation.y = q.y();
+  //     odom.pose.pose.orientation.z = q.z();
+  //     pubOdomAftMapped.publish(odom);
+  //   };
 
   ros::Rate loop(500);
   ros::Rate slow_loop(10);
-  std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> poses_vec;
-  std::vector<double> times_vec;
-  load_pose_with_time(cfg.pose_path, poses_vec, times_vec, cfg);
-  std::cout << "Sucessfully load pose with number: " << poses_vec.size()
-            << std::endl;
+  // std::vector<std::pair<Eigen::Vector3d, Eigen::Matrix3d>> poses_vec;
+  // std::vector<double> times_vec;
+  // load_pose_with_time(cfg.pose_path, poses_vec, times_vec, cfg);
+  // std::cout << "Sucessfully load pose with number: " << poses_vec.size()
+  //           << std::endl;
 
-  STDescManager * std_manager = new STDescManager(cfg);
+  // STDescManager * std_manager = new STDescManager(cfg);
 
-  size_t cloudInd = 0;
-  size_t keyCloudInd = 0;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr temp_cloud(
-      new pcl::PointCloud<pcl::PointXYZI>());
-  pcl::PointCloud<pcl::PointXYZI>::Ptr raw_cloud(
-      new pcl::PointCloud<pcl::PointXYZI>());
+  // size_t cloudInd = 0;
+  // size_t keyCloudInd = 0;
+  // pcl::PointCloud<pcl::PointXYZI>::Ptr temp_cloud(
+  //     new pcl::PointCloud<pcl::PointXYZI>());
+  // pcl::PointCloud<pcl::PointXYZI>::Ptr raw_cloud(
+  //     new pcl::PointCloud<pcl::PointXYZI>());
 
-  std::vector<double> descriptor_time;
-  std::vector<double> querying_time;
-  std::vector<double> update_time;
-  int triggle_loop_num = 0;
+  // std::vector<double> descriptor_time;
+  // std::vector<double> querying_time;
+  // std::vector<double> update_time;
+  // int triggle_loop_num = 0;
 
   /* # Create Log File */
-  std::ofstream ofile;
-  std::string log_fn = cfg.log_dir + "/result.csv";
-  std::string consumption_log_fn = cfg.log_dir + "/consumption.csv";
-  if (cfg.is_benchmark)
-  {
-    ofile.open(log_fn);
-    if (ofile.is_open())
-    {
-      std::cout << "log file '" << log_fn << "' is opend!";
-    }
-  }
+  // std::ofstream ofile;
+  // std::string log_fn = cfg.log_dir + "/result.csv";
+  // std::string consumption_log_fn = cfg.log_dir + "/consumption.csv";
+  // if (cfg.is_benchmark)
+  // {
+  //   ofile.open(log_fn);
+  //   if (ofile.is_open())
+  //   {
+  //     std::cout << "log file '" << log_fn << "' is opend!";
+  //   }
+  // }
 
   std::fstream file_;
 
-  file_.open(cfg.lidar_path, std::ios::in);
+  file_.open(g_lidar_path, std::ios::in);
   if (!file_) {
-    std::cout << "File " << cfg.lidar_path << " does not exit" << std::endl;
+    std::cout << "File " << g_lidar_path << " does not exit" << std::endl;
   }
-  ROS_INFO("Start to load the rosbag %s", cfg.lidar_path.c_str());
+  ROS_INFO("Start to load the rosbag %s", g_lidar_path.c_str());
   rosbag::Bag bag;
   try {
-    bag.open(cfg.lidar_path, rosbag::bagmode::Read);
+    bag.open(g_lidar_path, rosbag::bagmode::Read);
   } catch (rosbag::BagException e) {
     ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
   }
@@ -122,25 +174,13 @@ int main(int argc, char * argv[])
   types.push_back(std::string("sensor_msgs/PointCloud2"));
   rosbag::View view(bag, rosbag::TypeQuery(types));
 
-  std::vector<Eigen::Vector3d> tmp_translations;
-  std::vector<Eigen::Matrix3d> tmp_rotations;
-
-  constexpr double intensity_resolution = 1.0;
-  std::array<int, 1000> intensities{0};
-  constexpr double reflectivity_resolution = 0.1;
-  std::array<int, 1000> reflectivities{0};
-
-  // pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_source(new pcl::PointCloud<pcl::PointXYZI>);
-  // pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_target(new pcl::PointCloud<pcl::PointXYZI>);
-  // Eigen::Vector3d translation_source, translation_target;
-  // Eigen::Matrix3d rotation_source, rotation_target;
   Eigen::Vector3d translation;
   Eigen::Matrix3d rotation;
 
-  ros::Publisher pub_source
-    = nh.advertise<visualization_msgs::Marker>("source_points", 10);
-  ros::Publisher pub_target
-    = nh.advertise<visualization_msgs::Marker>("target_points", 10);
+  // ros::Publisher pub_source
+  //   = nh.advertise<visualization_msgs::Marker>("source_points", 10);
+  // ros::Publisher pub_target
+  //   = nh.advertise<visualization_msgs::Marker>("target_points", 10);
 
   int marker_id_source = 0;
   int marker_id_target = 0;
@@ -167,9 +207,9 @@ int main(int argc, char * argv[])
     if (scans.empty())
     {
       laser_time = cloud_ptr->header.stamp.toSec();
-      int pose_index = findPoseIndexUsingTime(times_vec, laser_time);
-      translation = poses_vec[pose_index].first;
-      rotation = poses_vec[pose_index].second;
+      // int pose_index = findPoseIndexUsingTime(times_vec, laser_time);
+      // translation = poses_vec[pose_index].first;
+      // rotation = poses_vec[pose_index].second;
     }
 
     // pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>);
@@ -200,47 +240,59 @@ int main(int argc, char * argv[])
 
         if (icp.hasConverged())
         {
-            std::cout << "ICP converged for pair " << i << " with score: " << icp.getFitnessScore() << std::endl;
-            std::cout << "Transformation matrix:" << std::endl;
-            std::cout << icp.getFinalTransformation() << std::endl;
+          std::cout << "ICP converged for pair " << i << " with score: " << icp.getFitnessScore() << std::endl;
+          std::cout << "Transformation matrix:" << std::endl;
+          std::cout << icp.getFinalTransformation() << std::endl;
 
-            // Update the target cloud for the next iteration
-            target_cloud = aligned_cloud.makeShared();  // Update the target for the next iteration
+          // Update the target cloud for the next iteration
+          target_cloud = aligned_cloud.makeShared();  // Update the target for the next iteration
         }
         else
         {
             std::cerr << "ICP did not converge for pair " << i << std::endl;
             // Handle the case where ICP did not converge
         }
+
+        my_visualizer.setCloud(*target_cloud, "sample");
       }
+
+
+      // auto viewer = simpleVis(target_cloud);
+      // while (!viewer->wasStopped())
+      // {
+      //   viewer->spinOnce(100);
+      //   std::this_thread::sleep_for(100ms);
+      //   /* code */
+      // }
 
       /* Publish Two Clouds */
-      visualization_msgs::Marker marker_source;
-      marker_source.header.frame_id = "camera_init";
-      marker_source.header.stamp.fromSec(laser_time);
-      marker_source.id = 0;
-      // marker_source.id = marker_id_source++;
-      marker_source.type = visualization_msgs::Marker::POINTS;  // Marker type
-      marker_source.action = visualization_msgs::Marker::ADD;
-      marker_source.scale.x = 0.01;  // Scale
-      marker_source.scale.y = 0.01;
-      marker_source.scale.z = 0.01;
-      marker_source.color.r = 0.8;  // Color
-      marker_source.color.g = 0.0;
-      marker_source.color.b = 0.0;
-      marker_source.color.a = 0.75;
-      for (const auto & point: target_cloud->points)
-      {
-        Eigen::Vector3d pv = point2vec(point);
-        // marker.action = visualization_msgs::Marker::ADD;  // Action (ADD, MODIFY, etc.)
-        pv = rotation * pv + translation;
-        geometry_msgs::Point pt;
-        pt.x = pv(0); pt.y = pv(1); pt.z = pv(2);
-        marker_source.points.push_back(pt);
-      }
+      // visualization_msgs::Marker marker_source;
+      // marker_source.header.frame_id = "camera_init";
+      // marker_source.header.stamp.fromSec(laser_time);
+      // marker_source.id = 0;
+      // // marker_source.id = marker_id_source++;
+      // marker_source.type = visualization_msgs::Marker::POINTS;  // Marker type
+      // marker_source.action = visualization_msgs::Marker::ADD;
+      // marker_source.scale.x = 0.01;  // Scale
+      // marker_source.scale.y = 0.01;
+      // marker_source.scale.z = 0.01;
+      // marker_source.color.r = 0.8;  // Color
+      // marker_source.color.g = 0.0;
+      // marker_source.color.b = 0.0;
+      // marker_source.color.a = 0.75;
+      // for (const auto & point: target_cloud->points)
+      // {
+      //   Eigen::Vector3d pv = point2vec(point);
+      //   // marker.action = visualization_msgs::Marker::ADD;  // Action (ADD, MODIFY, etc.)
+      //   pv = rotation * pv + translation;
+      //   geometry_msgs::Point pt;
+      //   pt.x = pv(0); pt.y = pv(1); pt.z = pv(2);
+      //   marker_source.points.push_back(pt);
+      // }
+      // pub_source.publish(marker_source);
+      // // pub_odom(translation, rotation);
 
-      pub_source.publish(marker_source);
-      pub_odom(translation, rotation);
+
       getchar();
       loop.sleep();
 
