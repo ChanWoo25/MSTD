@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CSV_READER_HPP__
+#define CSV_READER_HPP__
 
 #include <fstream>
 #include <string>
@@ -16,62 +17,20 @@ struct isSpace
   }
 };
 
-class CsvRow
-{
-private:
-  std::string         line_;
-  std::vector<int>    data_;
-
-public:
-  inline std::size_t size() const { return data_.size() - 1; }
-
-  std::string_view operator[](std::size_t index) const
-  {
-    return std::string_view(&line_[data_[index] + 1], data_[index + 1] -  (data_[index] + 1));
-  }
-
-  void read(std::istream & str)
-  {
-    do {
-      std::getline(str, line_);
-    } while (line_[0] == '#');
-
-    data_.clear();
-    data_.emplace_back(-1);
-    std::string::size_type pos = 0;
-
-    line_.erase(
-      std::remove_if(
-        line_.begin(),
-        line_.end(),
-        isSpace()),
-      line_.end());
-
-    while((pos = line_.find(',', pos)) != std::string::npos)
-    {
-      data_.emplace_back(pos);
-      ++pos;
-    }
-
-    pos   = line_.size();
-    data_.emplace_back(pos);
-  }
-};
-
-std::istream & operator>>(std::istream & str, CsvRow & data)
-{
-  data.read(str);
-  return str;
-}
-
 class CsvReader
 {
 private:
+  std::string fn_;
   std::ifstream file_;
-  CsvRow row_;
+  int n_cols_;
 
 public:
-  CsvReader(const std::string & fn)
+  CsvReader()=delete;
+  CsvReader(
+    const std::string & fn,
+    const int & n_cols)
+    : fn_(fn),
+      n_cols_(n_cols)
   {
     file_.open(fn);
     if (!file_.is_open()) {
@@ -86,18 +45,38 @@ public:
     }
   }
 
+  bool isOpened() { return file_.is_open(); }
+
   bool eof() { return file_.eof(); }
 
   auto next() -> std::vector<std::string>
   {
+    std::string line;
     std::vector<std::string> words;
-    file_ >> row_;
 
-    for (size_t i = 0; i < row_.size(); i++)
+    if (std::getline(file_, line))
     {
-      words.push_back(std::string(row_[i]));
+      line.erase(
+        std::remove_if(
+          line.begin(),
+          line.end(),
+          isSpace()),
+        line.end());
+      std::istringstream ss(line);
+      std::string token;
+      while (std::getline(ss, token, ','))
+      {
+        words.push_back(token);
+      }
+
+      if (line.empty() || words.size() != n_cols_)
+      {
+        return std::vector<std::string>();
+      }
     }
 
     return words;
   }
 };
+
+#endif

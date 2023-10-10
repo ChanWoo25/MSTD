@@ -33,7 +33,7 @@ if (GLOG_FOUND)
 endif (GLOG_FOUND)
 
 include_directories(
-  "/root/ws_std/mstd/include"
+  "${CMAKE_HOME_DIRECTORY}/include"
   ${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS})
