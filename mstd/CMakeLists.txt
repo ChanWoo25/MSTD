@@ -34,6 +34,7 @@ endif (GLOG_FOUND)
 
 include_directories(
   "${CMAKE_HOME_DIRECTORY}/include"
+  ${EIGEN3_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS})
