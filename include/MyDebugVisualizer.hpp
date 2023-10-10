@@ -64,14 +64,16 @@ public:
     viewer_->setShowFPS(true);
     viewer_->setCameraPosition(1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 
-    thread_ = std::thread(&MyDebugVisualizer::run, this);
+    pcl::PointCloud<PointType>::Ptr cloud =
+      new pcl::PointCloud<PointType>(pcl::PointCloud<PointType>());
+    viewer->addPointCloud<pcl::PointXYZ> (cloud, "sample cloud");
+    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
+
+    run();
   }
 
   ~MyDebugVisualizer()
   {
-    // Make sure to join or detach the thread before exiting the object
-    if (thread_.joinable())
-        thread_.join();
   }
 
   void setCloud(
@@ -97,7 +99,6 @@ public:
 
 private:
   pcl::visualization::PCLVisualizer::Ptr viewer_;
-  std::thread thread_;
   bool init = true;
 };
 

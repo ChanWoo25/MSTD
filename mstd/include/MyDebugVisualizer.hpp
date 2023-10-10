@@ -58,21 +58,38 @@ public:
       exit(1);
     }
 
+    viewer_ = pcl::visualization::PCLVisualizer::Ptr(new pcl::visualization::PCLVisualizer ("3D Viewer"));
+
     viewer_->setBackgroundColor (0, 0, 0);
     viewer_->addCoordinateSystem (1.0);
     viewer_->initCameraParameters ();
     viewer_->setShowFPS(true);
-    viewer_->setCameraPosition(1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    viewer_->setCameraPosition(10.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    viewer_->registerKeyboardCallback(keyboard_callback);
 
-    thread_ = std::thread(&MyDebugVisualizer::run, this);
+    // pcl::PointCloud<PointType>::Ptr cloud =
+    //   new pcl::PointCloud<PointType>(pcl::PointCloud<PointType>());
+    // viewer->addPointCloud<pcl::PointXYZ> (cloud, "sample cloud");
+    // viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
+
+    run();
   }
 
   ~MyDebugVisualizer()
   {
-    // Make sure to join or detach the thread before exiting the object
-    if (thread_.joinable())
-        thread_.join();
   }
+
+  static
+  void keyboard_callback(
+    const pcl::visualization::KeyboardEvent& event, void *)
+  {
+    if ( event.getKeyCode() && event.keyDown() ){
+      std::cout << "Key : " << event.getKeyCode() << ", " << event.getKeySym() << std::endl;
+    }
+  }
+
+
+  bool stopped() { return viewer_->wasStopped(); }
 
   void setCloud(
     pcl::PointCloud<PointType> cloud,
@@ -97,7 +114,6 @@ public:
 
 private:
   pcl::visualization::PCLVisualizer::Ptr viewer_;
-  std::thread thread_;
   bool init = true;
 };
 
