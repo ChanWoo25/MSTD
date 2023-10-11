@@ -1,5 +1,6 @@
 import os
-RESULT_DIR = '/data/results/MSTD/231007_on_wsl2'
+from pathlib import Path
+RESULT_DIR = '/data/results/MSTD/231011_Test'
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 DESCRIPTION = """\
@@ -9,8 +10,7 @@ DESCRIPTION = """\
 def write_config_file(seq_name:str, seq_id:int, z_max:float):
     SAVE_DIR = f"{RESULT_DIR}/{seq_name}_{seq_id:02d}-z_max={z_max}"
     os.makedirs(SAVE_DIR, exist_ok=True)
-    bag_path  = '/data/datasets/dataset_std/park_avia/park%d.bag'%seq_id
-    pose_path = '/data/datasets/dataset_std/park_avia/park%d_pose.txt'%seq_id
+    exid = Path(SAVE_DIR).name
     config = \
 f"""\
 # Experiment commit: not updated
@@ -24,14 +24,14 @@ plane_merge_normal_thre: 0.1
 voxel_size: 1.0
 voxel_init_num: 10
 proj_image_resolution: 0.25
-proj_dis_min: 0
-proj_dis_max: 5
-corner_thre: 10
+proj_dis_min: 0.0
+proj_dis_max: 5.0
+corner_thre: 10.0
 # std descriptor
 descriptor_near_num: 15
-descriptor_min_len: 2
-descriptor_max_len: 30
-non_max_suppression_radius: 2
+descriptor_min_len: 2.0
+descriptor_max_len: 30.0
+non_max_suppression_radius: 2.0
 std_side_resolution: 0.2
 # candidate search
 skip_near_num: 50
@@ -43,14 +43,12 @@ normal_threshold: 0.2
 dis_threshold: 0.5
 icp_threshold: 0.2
 # need to be written
-log_dir: "{SAVE_DIR}"
-lidar_path: "{bag_path}"
-pose_path: "{pose_path}"
+result_dir: "{SAVE_DIR}"
 seq_name: "{seq_name}"
 align: true
-seq_id: 1
 z_max: {z_max}
-is_benchmark: True
+exid: {exid}
+is_benchmark: true
 """
     save_fn = f'{SAVE_DIR}/config.yaml'
     with open(save_fn, 'w') as f:

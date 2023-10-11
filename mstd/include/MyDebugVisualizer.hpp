@@ -39,6 +39,7 @@ private:
     }
   }
 
+
 public:
   MyDebugVisualizer()=delete;
   MyDebugVisualizer(
@@ -59,62 +60,98 @@ public:
     }
 
     viewer_ = pcl::visualization::PCLVisualizer::Ptr(new pcl::visualization::PCLVisualizer ("3D Viewer"));
-
+    // auto cloud = pcl::PointCloud<PointType>().makeShared();
+    // viewer_->addPointCloud<PointType>(cloud, "sample cloud");
+    // viewer_->setPointCloudRenderingProperties(
+    //   pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+    //   1, "sample cloud");
     viewer_->setBackgroundColor (0, 0, 0);
     viewer_->addCoordinateSystem (1.0);
     viewer_->initCameraParameters ();
     viewer_->setShowFPS(true);
     viewer_->setCameraPosition(10.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-    viewer_->registerKeyboardCallback(keyboard_callback);
-
-    // pcl::PointCloud<PointType>::Ptr cloud =
-    //   new pcl::PointCloud<PointType>(pcl::PointCloud<PointType>());
-    // viewer->addPointCloud<pcl::PointXYZ> (cloud, "sample cloud");
-    // viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
-
-    run();
+    viewer_->registerKeyboardCallback(keyboardCB, (void *)this);
   }
 
   ~MyDebugVisualizer()
   {
   }
 
-  static
-  void keyboard_callback(
-    const pcl::visualization::KeyboardEvent& event, void *)
+  void spin()
   {
-    if ( event.getKeyCode() && event.keyDown() ){
-      std::cout << "Key : " << event.getKeyCode() << ", " << event.getKeySym() << std::endl;
+    while (init && !viewer_->wasStopped())
+    {
+      viewer_->spinOnce(100);
+      std::this_thread::sleep_for(20ms);
+      if (press_key_s)
+      {
+        press_key_s = false;
+        break;
+      }
     }
   }
 
+  static
+  void keyboardCB(
+    const pcl::visualization::KeyboardEvent& event,
+    void * viewer_void)
+  {
+    auto viewer
+      = static_cast<MyDebugVisualizer *>(viewer_void);
+    if (event.keyDown())
+    {
+      if (event.getKeyCode() == 's' || event.getKeyCode() == 'S')
+      {
+        viewer->press_key_s = true;
+      }
+    }
+  }
+
+  // static
+  // void mouseCB(
+  //   const pcl::visualization::MouseEvent &event,
+  //   void * viewer_void)
+  // {
+  //   auto viewer
+  //     = static_cast<MyDebugVisualizer *>(viewer_void);
+  //   // boost::shared_ptr<MyDebugVisualizer> viewer
+  //   //   = *static_cast<boost::shared_ptr<MyDebugVisualizerr> *>(viewer_void);
+
+  //   if (event.getButton() == pcl::visualization::MouseEvent::LeftButton &&
+  //       event.getType() == pcl::visualization::MouseEvent::MouseButtonRelease)
+  //     std::cout << "Left mouse button released at position (" << event.getX() << ", " << event.getY() << ")" << std::endl;
+  // }
 
   bool stopped() { return viewer_->wasStopped(); }
 
   void setCloud(
-    pcl::PointCloud<PointType> cloud,
+    pcl::shared_ptr<pcl::PointCloud<PointType>> cloud,
     const std::string & cloud_id)
   {
     // std::unique_lock<std::shared_mutex> lock(smtx_cloud_);
     if (isOnline())
     {
-      if (init)
+      if (!init)
       {
-        viewer_->addPointCloud<PointType>(cloud.makeShared(), cloud_id);
+        viewer_->addPointCloud<PointType>(cloud, cloud_id);
         viewer_->setPointCloudRenderingProperties(
           pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
-          1, "sample cloud");
+          1, cloud_id);
+        init = true;
       }
       else
       {
-        viewer_->updatePointCloud<PointType>(cloud.makeShared(), cloud_id);
+        viewer_->updatePointCloud<PointType>(cloud, cloud_id);
       }
     }
   }
 
+
+  bool press_key_s = false;
+
 private:
   pcl::visualization::PCLVisualizer::Ptr viewer_;
-  bool init = true;
+  bool init = false;
 };
 
 #endif

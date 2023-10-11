@@ -43,9 +43,22 @@ add_executable(main_icp main_icp.cpp)
 target_link_libraries(main_icp
   fmt::fmt
   ${PCL_LIBRARIES}
+  ${CERES_INCLUDE_DIRS}
   ${OpenCV_LIBS}
   ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES})
-
 set_target_properties(main_icp PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_HOME_DIRECTORY}/bin")
+
+add_executable(main_std
+  main_std.cpp
+  src/STDesc.cpp)
+target_link_libraries(main_std
+  fmt::fmt
+  ${PCL_LIBRARIES}
+  ${OpenCV_LIBS}
+  ${GLOG_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${CERES_LIBRARIES})
+set_target_properties(main_std PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_HOME_DIRECTORY}/bin")

@@ -17,7 +17,6 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
-#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -25,97 +24,8 @@ DEFINE_string(sequence_dir, "", "");
 DEFINE_string(pose_fn, "", "");
 DEFINE_string(method, "icp", "'icp' or 'gicp'");
 DEFINE_string(save_dir, "", "");
-DEFINE_double(icp_thres, 1.0, "");
-DEFINE_double(ds_voxel_size, 0.25, "");
-
-#define HASH_P 116101
-#define MAX_N 10000000000
-#define MAX_FRAME_N 20000
 
 bool save_cam_params = false;
-
-
-class VOXEL_LOC {
-public:
-  int64_t x, y, z;
-
-  VOXEL_LOC(int64_t vx = 0, int64_t vy = 0, int64_t vz = 0)
-      : x(vx), y(vy), z(vz) {}
-
-  bool operator==(const VOXEL_LOC &other) const {
-    return (x == other.x && y == other.y && z == other.z);
-  }
-};
-
-// for down sample function
-struct M_POINT {
-  float xyz[3];
-  float intensity;
-  int count = 0;
-};
-
-template <> struct std::hash<VOXEL_LOC> {
-  int64_t operator()(const VOXEL_LOC &s) const {
-    using std::hash;
-    using std::size_t;
-    return ((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x);
-  }
-};
-
-void down_sampling_voxel(
-  pcl::PointCloud<pcl::PointXYZI> & pl_feat,
-  double voxel_size)
-{
-  int intensity = rand() % 255;
-  if (voxel_size < 0.01) {
-    return;
-  }
-  std::unordered_map<VOXEL_LOC, M_POINT> voxel_map;
-  uint plsize = pl_feat.size();
-
-  for (uint i = 0; i < plsize; i++) {
-    pcl::PointXYZI &p_c = pl_feat[i];
-    float loc_xyz[3];
-    for (int j = 0; j < 3; j++) {
-      loc_xyz[j] = p_c.data[j] / voxel_size;
-      if (loc_xyz[j] < 0) {
-        loc_xyz[j] -= 1.0;
-      }
-    }
-
-    VOXEL_LOC position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1],
-                       (int64_t)loc_xyz[2]);
-    auto iter = voxel_map.find(position);
-    if (iter != voxel_map.end()) {
-      iter->second.xyz[0] += p_c.x;
-      iter->second.xyz[1] += p_c.y;
-      iter->second.xyz[2] += p_c.z;
-      iter->second.intensity += p_c.intensity;
-      iter->second.count++;
-    } else {
-      M_POINT anp;
-      anp.xyz[0] = p_c.x;
-      anp.xyz[1] = p_c.y;
-      anp.xyz[2] = p_c.z;
-      anp.intensity = p_c.intensity;
-      anp.count = 1;
-      voxel_map[position] = anp;
-    }
-  }
-  plsize = voxel_map.size();
-  pl_feat.clear();
-  pl_feat.resize(plsize);
-
-  uint i = 0;
-  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); ++iter) {
-    pl_feat[i].x = iter->second.xyz[0] / iter->second.count;
-    pl_feat[i].y = iter->second.xyz[1] / iter->second.count;
-    pl_feat[i].z = iter->second.xyz[2] / iter->second.count;
-    pl_feat[i].intensity = iter->second.intensity / iter->second.count;
-    i++;
-  }
-}
-
 
 void keyboard_callback(
   const pcl::visualization::KeyboardEvent& event, void *)
@@ -279,7 +189,7 @@ auto alignClouds(
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr mergedCloud(new pcl::PointCloud<pcl::PointXYZI>);
   auto target_cloud = clouds[0];
-  *mergedCloud = *target_cloud;  // Copy the first point cloud
+    *mergedCloud = *target_cloud;  // Copy the first point cloud
 
   for (size_t i = 1UL; i < clouds.size(); i++)
   {
@@ -288,13 +198,13 @@ auto alignClouds(
       = (FLAGS_method == "icp")
       ? (pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI>())
       : (pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI>());
-    processor.setMaxCorrespondenceDistance(FLAGS_icp_thres);
+    processor.setMaxCorrespondenceDistance(1.0);
     processor.setTransformationEpsilon(0.001);
     processor.setMaximumIterations(1000);
 
     pcl::PointCloud<pcl::PointXYZI>::Ptr source_cloud = clouds[i];
     processor.setInputSource(source_cloud);
-    processor.setInputTarget(mergedCloud);
+    processor.setInputTarget(target_cloud);
 
     // Align the source cloud to the target cloud
     pcl::PointCloud<pcl::PointXYZI> aligned_cloud;
@@ -367,7 +277,6 @@ int main (int argc, char * argv[])
       new_data_fn, new_pose_fn);
   }
 
-  auto visualizer = MyDebugVisualizer<pcl::PointXYZI>("online");
 
   int key_index = 0;
   double curr_timestamp;
@@ -392,58 +301,53 @@ int main (int argc, char * argv[])
     // LOG(INFO) << fmt::format("read {}", scan_fn);
 
     if (tmp_clouds.empty()) { curr_timestamp = timestamps[i]; }
-    down_sampling_voxel((*cloud), FLAGS_ds_voxel_size);
     tmp_clouds.push_back(cloud);
 
     if (tmp_clouds.size() == 10U)
     {
-      if (i > 80U) {
-        std::vector<Eigen::Matrix4d> transformations;
-        std::vector<double> scores;
-        pcl::PointCloud<pcl::PointXYZI>::Ptr aligned
-          = alignClouds(tmp_clouds, transformations, scores);
-        visualizer.setCloud(aligned, "sample cloud");
+      std::vector<Eigen::Matrix4d> transformations;
+      std::vector<double> scores;
+      pcl::PointCloud<pcl::PointXYZI>::Ptr aligned
+        = alignClouds(tmp_clouds, transformations, scores);
 
-        /* Save */
-        // auto new_scan_fn = fmt::format("{}/{:06d}.pcd", new_lidar_dir, key_index);
-        // pcl::io::savePCDFileASCII(new_scan_fn, (*aligned));
-        // LOG(INFO) << "Saved: " << new_scan_fn;
-        // fout_data << fmt::format("{:.6f},lidar/{:06d}.pcd", curr_timestamp, key_index) << std::endl;
-
-        if (prev_aligned)
-        {
-          auto processor
-            = (FLAGS_method == "icp")
-            ? (pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI>())
-            : (pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI>());
-          processor.setMaxCorrespondenceDistance(FLAGS_icp_thres);
-          processor.setTransformationEpsilon(0.001);
-          processor.setMaximumIterations(1000);
-          processor.setInputSource(prev_aligned);
-          processor.setInputTarget(aligned);
-          pcl::PointCloud<pcl::PointXYZI> aligned_cloud;
-          processor.align(aligned_cloud);
-          Eigen::Matrix4d tf_prev2curr  = processor.getFinalTransformation().cast<double>();
-          curr_pose = curr_pose * tf_prev2curr;
-        }
-
-        Eigen::Matrix3d curr_rotation = curr_pose.block<3,3>(0,0);
-        Eigen::Vector3d curr_translation = curr_pose.block<3,1>(0,3).transpose();
-        Eigen::Quaterniond curr_quat(curr_rotation);
-        // fout_pose << fmt::format(
-        //   "{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}",
-        //   curr_timestamp,
-        //   curr_translation(0),
-        //   curr_translation(1),
-        //   curr_translation(2),
-        //   curr_quat.x(),
-        //   curr_quat.y(),
-        //   curr_quat.z(),
-        //   curr_quat.w()) << std::endl;
-        visualizer.spin();
-        prev_aligned = aligned;
+      /* Save */
+      auto new_scan_fn = fmt::format("{}/{:06d}.pcd", new_lidar_dir, key_index);
+      pcl::io::savePCDFileASCII(new_scan_fn, (*aligned));
+      LOG(INFO) << "Saved: " << new_scan_fn;
+      fout_data << fmt::format("{:.6f},lidar/{:06d}.pcd", curr_timestamp, key_index) << std::endl;
+      // fmt::print(fout_data, "{:.6f},lidar/{:06d}.pcd\n", curr_timestamp, key_index);
+      if (prev_aligned)
+      {
+        auto processor
+          = (FLAGS_method == "icp")
+          ? (pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI>())
+          : (pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI>());
+        processor.setMaxCorrespondenceDistance(1.0);
+        processor.setTransformationEpsilon(0.001);
+        processor.setMaximumIterations(1000);
+        processor.setInputSource(prev_aligned);
+        processor.setInputTarget(aligned);
+        pcl::PointCloud<pcl::PointXYZI> aligned_cloud;
+        processor.align(aligned_cloud);
+        Eigen::Matrix4d tf_prev2curr  = processor.getFinalTransformation().cast<double>();
+        curr_pose = curr_pose * tf_prev2curr;
       }
 
+      Eigen::Matrix3d curr_rotation = curr_pose.block<3,3>(0,0);
+      Eigen::Vector3d curr_translation = curr_pose.block<3,1>(0,3).transpose();
+      Eigen::Quaterniond curr_quat(curr_rotation);
+      fout_pose << fmt::format(
+        "{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}",
+        curr_timestamp,
+        curr_translation(0),
+        curr_translation(1),
+        curr_translation(2),
+        curr_quat.x(),
+        curr_quat.y(),
+        curr_quat.z(),
+        curr_quat.w()) << std::endl;
+
+      prev_aligned = aligned;
       tmp_clouds.clear();
       key_index++;
     }
