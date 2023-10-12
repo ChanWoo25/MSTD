@@ -214,27 +214,27 @@ void load_pose_with_time(
   std::vector<double> &times_vec,
   ConfigSetting & cfg)
 {
-  Eigen::Matrix3d pcaRT = Eigen::Matrix3d::Identity();
-  if (cfg.align)
-  {
-    if (cfg.seq_id == 1)
-    {
-      pcaRT(0,0) = -0.1464712; pcaRT(0,1) = 0.98921027; pcaRT(0,2) = -0.00303869;
-      pcaRT(1,0) =  0.9874713; pcaRT(1,1) = 0.14603004; pcaRT(1,2) = -0.05979572;
-      pcaRT(2,0) =  0.0587068; pcaRT(2,1) = 0.01175897; pcaRT(2,2) =  0.99820601;
-    }
-    else if (cfg.seq_id == 2)
-    {
-      pcaRT(0,0) =  0.14564089; pcaRT(0,1) = 0.98932085; pcaRT(0,2) = -0.00574336;
-      pcaRT(1,0) = -0.98859487; pcaRT(1,1) = 0.14530422; pcaRT(1,2) = -0.03958364;
-      pcaRT(2,0) = -0.03832638; pcaRT(2,1) = 0.01144285; pcaRT(2,2) =  0.99919975;
-    }
-    else
-    {
-      std::cerr << "Wrong seq_id. Choose 1 or 2" << std::endl;
-      exit(1);
-    }
-  }
+  // Eigen::Matrix3d pcaRT = Eigen::Matrix3d::Identity();
+  // if (cfg.align)
+  // {
+  //   if (cfg.seq_id == 1)
+  //   {
+  //     pcaRT(0,0) = -0.1464712; pcaRT(0,1) = 0.98921027; pcaRT(0,2) = -0.00303869;
+  //     pcaRT(1,0) =  0.9874713; pcaRT(1,1) = 0.14603004; pcaRT(1,2) = -0.05979572;
+  //     pcaRT(2,0) =  0.0587068; pcaRT(2,1) = 0.01175897; pcaRT(2,2) =  0.99820601;
+  //   }
+  //   else if (cfg.seq_id == 2)
+  //   {
+  //     pcaRT(0,0) =  0.14564089; pcaRT(0,1) = 0.98932085; pcaRT(0,2) = -0.00574336;
+  //     pcaRT(1,0) = -0.98859487; pcaRT(1,1) = 0.14530422; pcaRT(1,2) = -0.03958364;
+  //     pcaRT(2,0) = -0.03832638; pcaRT(2,1) = 0.01144285; pcaRT(2,2) =  0.99919975;
+  //   }
+  //   else
+  //   {
+  //     std::cerr << "Wrong seq_id. Choose 1 or 2" << std::endl;
+  //     exit(1);
+  //   }
+  // }
 
   times_vec.clear();
   poses_vec.clear();
@@ -266,8 +266,10 @@ void load_pose_with_time(
           Eigen::Quaterniond q(temp_matrix[6], temp_matrix[3], temp_matrix[4],
                                temp_matrix[5]);
           std::pair<Eigen::Vector3d, Eigen::Matrix3d> single_pose;
-          single_pose.first  = pcaRT.transpose() * translation;
-          single_pose.second = pcaRT.transpose() * q.toRotationMatrix();
+          single_pose.first  = translation;
+          single_pose.second = q.toRotationMatrix();
+          // single_pose.first  = pcaRT.transpose() * translation;
+          // single_pose.second = pcaRT.transpose() * q.toRotationMatrix();
           poses_vec.push_back(single_pose);
         }
         number++;
@@ -561,6 +563,44 @@ void STDescManager::GenerateSTDescs(
   return;
 }
 
+void STDescManager::GenerateSTDescsRgb(
+  pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+  pcl::PointCloud<pcl::PointXYZRGB> & rgb_cloud,
+  std::vector<STDesc> &stds_vec)
+{
+  // step1, voxelization and plane dection
+  std::unordered_map<VOXEL_LOC, OctoTree *> voxel_map;
+  init_voxel_map_rgb(input_cloud, rgb_cloud, voxel_map);
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr plane_cloud(
+      new pcl::PointCloud<pcl::PointXYZINormal>);
+  getPlane(voxel_map, plane_cloud);
+  // std::cout << "[Description] planes size:" << plane_cloud->size() <<
+  // std::endl;
+  plane_cloud_vec_.push_back(plane_cloud);
+
+  // step2, build connection for planes in the voxel map
+  build_connection(voxel_map);
+
+  // step3, extraction corner points
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr corner_points(
+      new pcl::PointCloud<pcl::PointXYZINormal>);
+  corner_extractor(voxel_map, input_cloud, corner_points);
+  corner_cloud_vec_.push_back(corner_points);
+  // std::cout << "[Description] corners size:" << corner_points->size()
+  //           << std::endl;
+
+  // step4, generate stable triangle descriptors
+  stds_vec.clear();
+  build_stdesc(corner_points, stds_vec);
+  // std::cout << "[Description] stds size:" << stds_vec.size() << std::endl;
+
+  // step5, clear memory
+  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++) {
+    delete (iter->second);
+  }
+  return;
+}
+
 void STDescManager::SearchLoop(
   const std::vector<STDesc> & stds_vec,
   std::pair<int, double> & loop_result,
@@ -652,7 +692,55 @@ void STDescManager::AddSTDescs(const std::vector<STDesc> &stds_vec) {
 }
 
 void STDescManager::init_voxel_map(
+  const pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+  std::unordered_map<VOXEL_LOC, OctoTree *> & voxel_map)
+{
+  /* Voxelization */
+  uint plsize = input_cloud->size();
+  for (uint i = 0; i < plsize; i++)
+  {
+    Eigen::Vector3d p_c(input_cloud->points[i].x,
+                        input_cloud->points[i].y,
+                        input_cloud->points[i].z);
+    double loc_xyz[3];
+    for (int j = 0; j < 3; j++) {
+      loc_xyz[j] = p_c[j] / config_setting_.voxel_size_;
+      if (loc_xyz[j] < 0) {
+        loc_xyz[j] -= 1.0; /* [-1.0, 0.0) 범위는 사용하지 않음 => Why? */
+      }
+    }
+    VOXEL_LOC position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1],
+                       (int64_t)loc_xyz[2]);
+    auto iter = voxel_map.find(position);
+    if (iter != voxel_map.end()) {
+      voxel_map[position]->voxel_points_.push_back(p_c);
+    } else {
+      OctoTree *octo_tree = new OctoTree(config_setting_);
+      voxel_map[position] = octo_tree;
+      voxel_map[position]->voxel_points_.push_back(p_c);
+    }
+  }
+  std::vector<std::unordered_map<VOXEL_LOC, OctoTree *>::iterator> iter_list;
+  std::vector<size_t> index;
+  size_t i = 0;
+  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); ++iter) {
+    index.push_back(i);
+    i++;
+    iter_list.push_back(iter);
+  }
+
+  /* Plane Detection */
+  // std::cout << "voxel num:" << index.size() << std::endl;
+  for (int i = 0; i < index.size(); i++)
+  {
+    iter_list[i]->second->init_octo_tree();
+  }
+}
+
+
+void STDescManager::init_voxel_map_rgb(
   const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
+  pcl::PointCloud<pcl::PointXYZRGB> & rgb_cloud,
   std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map)
 {
   /* Voxelization */
@@ -694,6 +782,34 @@ void STDescManager::init_voxel_map(
   for (int i = 0; i < index.size(); i++)
   {
     iter_list[i]->second->init_octo_tree();
+    if (iter_list[i]->second->plane_ptr_->is_plane_ == true)
+    {
+      for (const auto & point: iter_list[i]->second->voxel_points_)
+      {
+        pcl::PointXYZRGB pt;
+        pt.x = static_cast<float>(point(0));
+        pt.y = static_cast<float>(point(1));
+        pt.z = static_cast<float>(point(2));
+        pt.r = 0;
+        pt.g = 0;
+        pt.b = 255;
+        rgb_cloud.points.push_back(pt);
+      }
+    }
+    else
+    {
+      for (const auto & point: iter_list[i]->second->voxel_points_)
+      {
+        pcl::PointXYZRGB pt;
+        pt.x = static_cast<float>(point(0));
+        pt.y = static_cast<float>(point(1));
+        pt.z = static_cast<float>(point(2));
+        pt.r = 255;
+        pt.g = 128;
+        pt.b = 0;
+        rgb_cloud.points.push_back(pt);
+      }
+    }
   }
 }
 

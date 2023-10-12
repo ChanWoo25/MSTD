@@ -329,6 +329,12 @@ public:
   void GenerateSTDescs(pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
                        std::vector<STDesc> &stds_vec);
 
+  // generate STDescs from a point cloud with RGB update
+  void GenerateSTDescsRgb(
+    pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+    pcl::PointCloud<pcl::PointXYZRGB> & rgb_cloud,
+    std::vector<STDesc> &stds_vec);
+
   // search result <candidate_id, plane icp score>. -1 for no loop
   void SearchLoop(const std::vector<STDesc> &stds_vec,
                   std::pair<int, double> &loop_result,
@@ -359,6 +365,10 @@ private:
   void init_voxel_map(const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
                       std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map);
 
+  void init_voxel_map_rgb(
+    const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
+    pcl::PointCloud<pcl::PointXYZRGB> & rgb_cloud,
+    std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map);
 
   // build connection for planes
   void build_connection(std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map);

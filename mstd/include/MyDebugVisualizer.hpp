@@ -65,12 +65,18 @@ public:
     // viewer_->setPointCloudRenderingProperties(
     //   pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
     //   1, "sample cloud");
-    viewer_->setBackgroundColor (0, 0, 0);
-    viewer_->addCoordinateSystem (1.0);
+    // viewer_->setBackgroundColor (0, 0, 0);
     viewer_->initCameraParameters ();
     viewer_->setShowFPS(true);
     viewer_->setCameraPosition(10.0, 0.0, 0.0, 0.0, 0.0, 1.0);
     viewer_->registerKeyboardCallback(keyboardCB, (void *)this);
+
+    viewer_->createViewPort(0.0, 0.0, 0.5, 1.0, v00);
+    viewer_->createViewPort(0.5, 0.0, 1.0, 1.0, v01);
+    viewer_->addCoordinateSystem (1.0, "v00", v00);
+    viewer_->addCoordinateSystem (2.0, "v01", v01);
+    viewer_->setBackgroundColor (0.9, 0.9, 0.9, v00);
+    viewer_->setBackgroundColor (0.9, 0.9, 0.9, v01);
   }
 
   ~MyDebugVisualizer()
@@ -125,7 +131,7 @@ public:
   bool stopped() { return viewer_->wasStopped(); }
 
   void setCloud(
-    pcl::shared_ptr<pcl::PointCloud<PointType>> cloud,
+    pcl::shared_ptr<pcl::PointCloud<PointType>> & cloud,
     const std::string & cloud_id)
   {
     // std::unique_lock<std::shared_mutex> lock(smtx_cloud_);
@@ -133,15 +139,43 @@ public:
     {
       if (!init)
       {
-        viewer_->addPointCloud<PointType>(cloud, cloud_id);
+        viewer_->addPointCloud<PointType>(cloud, cloud_id, v00);
         viewer_->setPointCloudRenderingProperties(
           pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
-          1, cloud_id);
+          2.0, cloud_id, v00);
         init = true;
       }
       else
       {
         viewer_->updatePointCloud<PointType>(cloud, cloud_id);
+        viewer_->setPointCloudRenderingProperties(
+          pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+          2.0, cloud_id, v00);
+      }
+    }
+  }
+
+  void setRGBCloud(
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr & rgb_cloud)
+  {
+    // std::unique_lock<std::shared_mutex> lock(smtx_cloud_);
+    if (isOnline())
+    {
+      if (!rgb_init)
+      {
+        viewer_->addPointCloud<pcl::PointXYZRGB>(rgb_cloud, "RGBCloud", v01);
+        viewer_->setPointCloudRenderingProperties(
+          pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+          4.0, "RGBCloud", v01);
+        rgb_init = true;
+      }
+      else
+      {
+        pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(rgb_cloud);
+        viewer_->updatePointCloud<pcl::PointXYZRGB>(rgb_cloud, rgb, "RGBCloud");
+        viewer_->setPointCloudRenderingProperties(
+          pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+          4.0, "RGBCloud", v01);
       }
     }
   }
@@ -152,6 +186,9 @@ public:
 private:
   pcl::visualization::PCLVisualizer::Ptr viewer_;
   bool init = false;
+  bool rgb_init = false;
+  int v00, v01; // used   viewport
+  int v10, v11; // unused viewport
 };
 
 #endif

@@ -22,6 +22,7 @@
 namespace fs = std::filesystem;
 
 DEFINE_string(sequence_dir, "", "");
+// DEFINE_string(pose_fn, "", "");
 DEFINE_string(result_dir, "", "");
 
 void create_directories (
@@ -151,10 +152,10 @@ size_t readPoseData(
     iss >> translation(0);
     iss >> translation(1);
     iss >> translation(2);
-    iss >> quaternion.w();
     iss >> quaternion.x();
     iss >> quaternion.y();
     iss >> quaternion.z();
+    iss >> quaternion.w();
     out_timestamps.push_back(timestamp);
     out_translations.push_back(translation);
     out_quaternions.push_back(quaternion);
@@ -193,6 +194,8 @@ bool queryPoseByTimestamp(
 
   double alpha = (query_timestamp    - timestamps[lo_idx])
                / (timestamps[hi_idx] - timestamps[lo_idx]);
+  CHECK(0.0 <= alpha && alpha <= 1.0);
+
   out_translation
     = (1.0 - alpha) * translations[lo_idx]
     + (alpha)       * translations[hi_idx];
@@ -217,6 +220,16 @@ int main (int argc, char * argv[])
   std::vector<std::string> scan_paths;
   const auto N_SCANS = readLidarData(data_fn, timestamps, scan_paths);
 
+  const std::string pose_fn = fmt::format("{}/pose.txt", FLAGS_sequence_dir);
+  std::vector<double> pose_timestamps;
+  std::vector<Eigen::Vector3d> pose_translations;
+  std::vector<Eigen::Quaterniond> pose_quaternions;
+  const auto N_POSES = readPoseData(
+    pose_fn,
+    pose_timestamps,
+    pose_translations,
+    pose_quaternions);
+
   /* Ready to log results */
   create_directories(FLAGS_result_dir);
   create_directories(fmt::format("{}/pseudo_img", FLAGS_result_dir));
@@ -236,29 +249,79 @@ int main (int argc, char * argv[])
   std::vector<double> descriptor_time;
   std::vector<double> querying_time;
   std::vector<double> update_time;
+  int triggle_loop_num = 0;
 
   /* Main Loop */
+  unsigned scan_cnt = 0;
+  size_t keyframe_idx = 0;
+  auto key_cloud = pcl::PointCloud<pcl::PointXYZI>().makeShared();
+  auto rgb_cloud = pcl::PointCloud<pcl::PointXYZRGB>().makeShared();
   for (size_t i = 0; i < N_SCANS; i++)
   {
     auto cloud = readScan(scan_paths[i]);
-    LOG(INFO) << fmt::format(
-      "#{:02d} Time({:.6f}) Size({}",
-      i, timestamps[i], cloud->size());
+    const auto n_points_before_ds = cloud->size();
+    ++scan_cnt;
+    // LOG(INFO) << fmt::format(
+    //   "#{:02d} Time({:.6f}) Size({}",
+    //   i, timestamps[i], cloud->size());
 
     down_sampling_voxel(*cloud, cfg.ds_size_);
+    const auto n_points_after_ds = cloud->size();
     LOG(INFO) << fmt::format(
-      "#{:02d} Time({:.6f}) Size({})",
-      i, timestamps[i], cloud->size());
+      "#{:02d} Time({:.6f}) Size({} -> {})",
+      i, timestamps[i], n_points_before_ds, n_points_after_ds);
 
-    auto tmp_cloud = pcl::PointCloud<pcl::PointXYZI>().makeShared();
-    for (auto point : cloud->points)
+    const auto & timestamp = timestamps[i];
+    Eigen::Vector3d translation;
+    Eigen::Quaterniond quaternion;
+    bool succ = queryPoseByTimestamp(
+      pose_timestamps,
+      pose_translations,
+      pose_quaternions,
+      timestamp,
+      translation,
+      quaternion);
+    Eigen::Matrix3d rotation = quaternion.toRotationMatrix();
+
+    if (succ)
     {
-      if (point.z >= cfg.z_max) { continue; }
-      tmp_cloud->points.push_back(point);
+      LOG(INFO) << fmt::format(
+        "t({:.4f}) | xyz({:.2f},{:.2f},{:.2f}) | quat({:.2f},{:.2f},{:.2f},{:.2f})",
+        timestamp,
+        translation(0),
+        translation(1),
+        translation(2),
+        quaternion.x(),
+        quaternion.y(),
+        quaternion.z(),
+        quaternion.w());
     }
-    LOG(INFO) << fmt::format(
-      "#{:02d} Time({:.6f}) Size({})",
-      i, timestamps[i], tmp_cloud->size());
+
+    for (auto & point: cloud->points)
+    {
+      Eigen::Vector3d pv = point2vec(point);
+
+      // const auto int_idx = static_cast<int>(std::floor(cloud.points[i].intensity / intensity_resolution));
+      // if (0 <= int_idx && int_idx < 1000) {
+      //   intensities[int_idx]++;
+      // }
+      // const auto range = std::pow(cloud.points[i].x, 2.0)
+      //                   + std::pow(cloud.points[i].y, 2.0)
+      //                   + std::pow(cloud.points[i].z, 2.0);
+      // const auto ref = cloud.points[i].intensity / range;
+      // const auto ref_idx = static_cast<int>(std::floor(ref / reflectivity_resolution));
+      // if (0 <= ref_idx && ref_idx < 1000) {
+      //   reflectivities[ref_idx]++;
+      // }
+
+      pv = rotation * pv + translation;
+      point = vec2point(pv);
+      key_cloud->points.push_back(point);
+    }
+
+    // LOG(INFO) << fmt::format(
+    //   "#{:02d} Time({:.6f}) Size({})",
+    //   i, timestamps[i], key_cloud->size());
 
     // constexpr bool create_img = false;
     // if (create_img)
@@ -276,117 +339,98 @@ int main (int argc, char * argv[])
     //   cv::imwrite(ss.str(), pseudo_img);
     // }
 
-
-    /* 3. Descriptor Extraction */
-    auto t_descriptor_begin = std::chrono::high_resolution_clock::now();
-    std::vector<STDesc> stds_vec;
-    std_manager->GenerateSTDescs(tmp_cloud, stds_vec);
-    auto t_descriptor_end = std::chrono::high_resolution_clock::now();
-    descriptor_time.push_back(time_inc(t_descriptor_end, t_descriptor_begin));
-
-    /* 4. Searching Loop */
-    auto t_query_begin = std::chrono::high_resolution_clock::now();
-    std::pair<int, double> search_result(-1, 0);
-    std::pair<Eigen::Vector3d, Eigen::Matrix3d> loop_transform;
-    loop_transform.first << 0, 0, 0;
-    loop_transform.second = Eigen::Matrix3d::Identity();
-    std::vector<std::pair<STDesc, STDesc>> loop_std_pair;
-    if (i > cfg.skip_near_num_)
+    if (scan_cnt % 10U == 0)
     {
-      std_manager->SearchLoop(
-        stds_vec,
-        search_result,
-        loop_transform,
-        loop_std_pair);
+      /* 3. Descriptor Extraction */
+      auto t_descriptor_begin = std::chrono::high_resolution_clock::now();
+      std::vector<STDesc> stds_vec;
+      std_manager->GenerateSTDescsRgb(key_cloud, (*rgb_cloud), stds_vec);
+      auto t_descriptor_end = std::chrono::high_resolution_clock::now();
+      descriptor_time.push_back(time_inc(t_descriptor_end, t_descriptor_begin));
+
+      /* 4. Searching Loop */
+      auto t_query_begin = std::chrono::high_resolution_clock::now();
+      std::pair<int, double> search_result(-1, 0);
+      std::pair<Eigen::Vector3d, Eigen::Matrix3d> loop_transform;
+      loop_transform.first << 0, 0, 0;
+      loop_transform.second = Eigen::Matrix3d::Identity();
+      std::vector<std::pair<STDesc, STDesc>> loop_std_pair;
+      if (i > cfg.skip_near_num_)
+      {
+        std_manager->SearchLoop(
+          stds_vec,
+          search_result,
+          loop_transform,
+          loop_std_pair);
+      }
+      auto t_query_end = std::chrono::high_resolution_clock::now();
+      querying_time.push_back(time_inc(t_query_end, t_query_begin));
+
+      if (search_result.first > 0)
+      {
+        LOG(INFO) << fmt::format(
+          "Score({:.3f}) | Loop detected! With {}-th Keyframe. ",
+          search_result.second, search_result.first);
+      }
+
+      // step3. Add descriptors to the database
+      auto t_map_update_begin = std::chrono::high_resolution_clock::now();
+      std_manager->AddSTDescs(stds_vec);
+      auto t_map_update_end = std::chrono::high_resolution_clock::now();
+      update_time.push_back(time_inc(t_map_update_end, t_map_update_begin));
+
+      std_manager->key_cloud_vec_.push_back(key_cloud);
+      // if (cfg.is_benchmark)
+      // {
+      //   std_manager->key_positions_.push_back(translation);
+      //   std_manager->key_times_.push_back(laser_time);
+      // }
+      LOG(INFO) << "tmp size: " << key_cloud->size() << std::endl;;
+      visualizer.setCloud(key_cloud, "sample cloud");
+      visualizer.setRGBCloud(rgb_cloud);
+
+      if (search_result.first > 0
+          || cfg.is_benchmark)
+      {
+        if (cfg.is_benchmark)
+        {
+          // ofile << std::fixed;
+          // ofile.precision(6);
+          // ofile << laser_time << ',';
+          // ofile << search_result.second << ',';
+          // Eigen::Vector3d query_translation = translation;
+          // Eigen::Vector3d value_translation
+          //   = std_manager->key_positions_[search_result.first];
+          // ofile.precision(4);
+          // ofile << query_translation(0) << ',';
+          // ofile << query_translation(1) << ',';
+          // ofile << query_translation(2) << ',';
+          // ofile << value_translation(0) << ',';
+          // ofile << value_translation(1) << ',';
+          // ofile << value_translation(2) << '\n';
+        }
+        else
+        {
+          triggle_loop_num++;
+          pcl::toROSMsg(*std_manager->key_cloud_vec_[search_result.first],
+                        pub_cloud);
+          pub_cloud.header.frame_id = "camera_init";
+          pubMatchedCloud.publish(pub_cloud);
+          slow_loop.sleep();
+          pcl::toROSMsg(*std_manager->corner_cloud_vec_[search_result.first],
+                        pub_cloud);
+          pub_cloud.header.frame_id = "camera_init";
+          pubMatchedCorner.publish(pub_cloud);
+          publish_std_pairs(loop_std_pair, pubSTD);
+        }
+      }
+
+      visualizer.spin();
+
+      ++keyframe_idx;
+      key_cloud->clear();
+      rgb_cloud->clear();
     }
-    auto t_query_end = std::chrono::high_resolution_clock::now();
-    querying_time.push_back(time_inc(t_query_end, t_query_begin));
-
-    if (search_result.first > 0)
-    {
-      LOG(INFO) << fmt::format(
-        "Score({:.3f}) | Loop detected! With {}-th Keyframe. ",
-        search_result.second, search_result.first);
-    }
-
-    // step3. Add descriptors to the database
-    auto t_map_update_begin = std::chrono::high_resolution_clock::now();
-    std_manager->AddSTDescs(stds_vec);
-    auto t_map_update_end = std::chrono::high_resolution_clock::now();
-    update_time.push_back(time_inc(t_map_update_end, t_map_update_begin));
-
-    std_manager->key_cloud_vec_.push_back(tmp_cloud);
-    // if (cfg.is_benchmark)
-    // {
-    //   std_manager->key_positions_.push_back(translation);
-    //   std_manager->key_times_.push_back(laser_time);
-    // }
-    LOG(INFO) << "tmp size: " << tmp_cloud->size() << std::endl;;
-    visualizer.setCloud(tmp_cloud, "sample cloud");
-
-    // if (search_result.first > 0
-    //     || cfg.is_benchmark)
-    // {
-    //   if (cfg.is_benchmark)
-    //   {
-    //     ofile << std::fixed;
-    //     ofile.precision(6);
-    //     ofile << laser_time << ',';
-    //     ofile << search_result.second << ',';
-    //     Eigen::Vector3d query_translation = translation;
-    //     Eigen::Vector3d value_translation
-    //       = std_manager->key_positions_[search_result.first];
-    //     ofile.precision(4);
-    //     ofile << query_translation(0) << ',';
-    //     ofile << query_translation(1) << ',';
-    //     ofile << query_translation(2) << ',';
-    //     ofile << value_translation(0) << ',';
-    //     ofile << value_translation(1) << ',';
-    //     ofile << value_translation(2) << '\n';
-    //   }
-    //   else
-    //   {
-    //     triggle_loop_num++;
-    //     pcl::toROSMsg(*std_manager->key_cloud_vec_[search_result.first],
-    //                   pub_cloud);
-    //     pub_cloud.header.frame_id = "camera_init";
-    //     pubMatchedCloud.publish(pub_cloud);
-    //     slow_loop.sleep();
-    //     pcl::toROSMsg(*std_manager->corner_cloud_vec_[search_result.first],
-    //                   pub_cloud);
-    //     pub_cloud.header.frame_id = "camera_init";
-    //     pubMatchedCorner.publish(pub_cloud);
-    //     publish_std_pairs(loop_std_pair, pubSTD);
-    //     slow_loop.sleep();
-    //   }
-    // }
-    // temp_cloud->clear();
-    // raw_cloud->clear();
-
-    // if (!cfg.is_benchmark)
-    // {
-    //   getchar();
-    // }
-
-
-    // if (!cfg.is_benchmark)
-    // {
-    //   pub_odom(translation, rotation);
-    //   // getchar();
-    //   // nav_msgs::Odometry odom;
-    //   // odom.header.frame_id = "camera_init";
-    //   // odom.pose.pose.position.x = translation[0];
-    //   // odom.pose.pose.position.y = translation[1];
-    //   // odom.pose.pose.position.z = translation[2];
-    //   // Eigen::Quaterniond q(rotation);
-    //   // odom.pose.pose.orientation.w = q.w();
-    //   // odom.pose.pose.orientation.x = q.x();
-    //   // odom.pose.pose.orientation.y = q.y();
-    //   // odom.pose.pose.orientation.z = q.z();
-    //   // pubOdomAftMapped.publish(odom);
-    // }
-
-    visualizer.spin();
   }
 
 
