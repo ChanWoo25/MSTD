@@ -62,3 +62,19 @@ target_link_libraries(main_std
   ${CERES_LIBRARIES})
 set_target_properties(main_std PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_HOME_DIRECTORY}/bin")
+
+add_executable(main_scancontext
+  "main_scancontext.cpp"
+  "src/STDesc.cpp"
+  "include/Scancontext/Scancontext.cpp")
+target_link_libraries(main_scancontext
+  fmt::fmt
+  ${PCL_LIBRARIES}
+  ${OpenCV_LIBS}
+  ${GLOG_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${CERES_LIBRARIES})
+set_target_properties(main_scancontext PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_HOME_DIRECTORY}/bin")
+
+
