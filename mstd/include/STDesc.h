@@ -333,6 +333,10 @@ public:
   void GenerateSTDescsRgb(
     pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
     pcl::PointCloud<pcl::PointXYZRGB> & rgb_cloud,
+    pcl::PointCloud<pcl::PointXYZRGB> & corner_cloud,
+    pcl::PointCloud<pcl::Normal> & corner_normals,
+    pcl::PointCloud<pcl::PointXYZRGB> & corner_cloud_before_nms,
+    pcl::PointCloud<pcl::Normal> & corner_normals_before_nms,
     std::vector<STDesc> &stds_vec);
 
   // search result <candidate_id, plane icp score>. -1 for no loop
@@ -379,9 +383,18 @@ private:
 
   // extract corner points from pre-build voxel map and clouds
   void
-  corner_extractor(std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
-                   const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud,
-                   pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points);
+  corner_extractor(
+    std::unordered_map<VOXEL_LOC, OctoTree *> & voxel_map,
+    const pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_points);
+
+  // extract corner points from pre-build voxel map and clouds
+  void
+  corner_extractor_with_before(
+    std::unordered_map<VOXEL_LOC, OctoTree *> & voxel_map,
+    const pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_points,
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_before_nms);
 
   void
   extract_corner(const Eigen::Vector3d &proj_center,
@@ -391,7 +404,7 @@ private:
 
   // non maximum suppression, to control the number of corners
   void non_maxi_suppression(
-      pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points);
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr &corner_points);
 
   // build STDescs from corner points.
   void

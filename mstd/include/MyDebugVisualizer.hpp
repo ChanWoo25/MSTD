@@ -12,6 +12,7 @@
 #include <memory>
 #include <chrono>
 #include <thread>
+#include <map>
 
 using namespace std::chrono_literals;
 
@@ -74,8 +75,8 @@ public:
     viewer_->createViewPort(0.0, 0.0, 0.5, 1.0, v00);
     viewer_->createViewPort(0.5, 0.0, 1.0, 1.0, v01);
     viewer_->addCoordinateSystem (1.0, "v00", v00);
-    viewer_->addCoordinateSystem (2.0, "v01", v01);
-    viewer_->setBackgroundColor (0.9, 0.9, 0.9, v00);
+    viewer_->addCoordinateSystem (1.0, "v01", v01);
+    viewer_->setBackgroundColor (0.1, 0.1, 0.1, v00);
     viewer_->setBackgroundColor (0.9, 0.9, 0.9, v01);
   }
 
@@ -155,6 +156,26 @@ public:
     }
   }
 
+  void setRGBNormalCloud(
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr & rgb_cloud,
+    pcl::PointCloud<pcl::Normal>::Ptr & normal_cloud,
+    const std::string & id,
+    const double & point_size)
+  {
+    std::string corner_id = "corner" + id;
+    std::string normal_id = "normal" + id;
+    if (id_map.find(corner_id) != id_map.end())
+    {
+      viewer_->removePointCloud(corner_id, v01);
+      viewer_->removePointCloud(normal_id, v01);
+    }
+    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(rgb_cloud);
+    viewer_->addPointCloud<pcl::PointXYZRGB> (rgb_cloud, rgb, corner_id, v01);
+    viewer_->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, point_size, corner_id);
+    viewer_->addPointCloudNormals<pcl::PointXYZRGB, pcl::Normal> (rgb_cloud, normal_cloud, 20, 0.2, normal_id, v01);
+    viewer_->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 10.0, normal_id);
+  }
+
   void setRGBCloud(
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr & rgb_cloud)
   {
@@ -166,7 +187,7 @@ public:
         viewer_->addPointCloud<pcl::PointXYZRGB>(rgb_cloud, "RGBCloud", v01);
         viewer_->setPointCloudRenderingProperties(
           pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
-          4.0, "RGBCloud", v01);
+          3.0, "RGBCloud", v01);
         rgb_init = true;
       }
       else
@@ -175,11 +196,10 @@ public:
         viewer_->updatePointCloud<pcl::PointXYZRGB>(rgb_cloud, rgb, "RGBCloud");
         viewer_->setPointCloudRenderingProperties(
           pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
-          4.0, "RGBCloud", v01);
+          3.0, "RGBCloud", v01);
       }
     }
   }
-
 
   bool press_key_s = false;
 
@@ -189,6 +209,7 @@ private:
   bool rgb_init = false;
   int v00, v01; // used   viewport
   int v10, v11; // unused viewport
+  std::map<std::string, bool> id_map;
 };
 
 #endif

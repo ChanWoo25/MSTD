@@ -22,7 +22,7 @@
 namespace fs = std::filesystem;
 
 DEFINE_string(sequence_dir, "", "");
-// DEFINE_string(pose_fn, "", "");
+DEFINE_string(pose_fn, "", "");
 DEFINE_string(result_dir, "", "");
 
 void create_directories (
@@ -35,6 +35,13 @@ void create_directories (
   }
 }
 
+bool isSubstring(
+  const std::string & str,
+  const std::string & substr)
+{
+    return str.find(substr) != std::string::npos;
+}
+
 auto readScan(
   const std::string & rel_scan_fn)
   -> pcl::PointCloud<pcl::PointXYZI>::Ptr
@@ -42,9 +49,44 @@ auto readScan(
   const auto scan_fn = fmt::format(
     "{}/{}", FLAGS_sequence_dir, rel_scan_fn);
   auto cloud = pcl::PointCloud<pcl::PointXYZI>().makeShared();
-  if (pcl::io::loadPCDFile<pcl::PointXYZI>(scan_fn, *cloud) == -1) {
-    LOG(ERROR) << fmt::format(
-      "Couldn't read '{}' file.", scan_fn);
+  if (isSubstring(scan_fn, "avia"))
+  {
+    if (pcl::io::loadPCDFile<pcl::PointXYZI>(scan_fn, *cloud) == -1) {
+      LOG(ERROR) << fmt::format(
+        "Couldn't read '{}' file.", scan_fn);
+    }
+  }
+  else if (isSubstring(scan_fn, "kitti"))
+  {
+    std::ifstream f_bin;
+    f_bin.open(scan_fn, std::ifstream::in | std::ifstream::binary);
+    if (!f_bin) {
+      LOG(ERROR) << fmt::format(
+        "Couldn't read '{}' file.", scan_fn);
+    }
+    f_bin.seekg(0, std::ios::end);
+    const size_t num_elements = f_bin.tellg() / sizeof(float);
+    std::vector<float> buf(num_elements);
+    f_bin.seekg(0, std::ios::beg);
+    f_bin.read(
+      reinterpret_cast<char *>(
+        &buf[0]),
+        num_elements * sizeof(float));
+
+    for (std::size_t i = 0; i < buf.size(); i += 4)
+    {
+      pcl::PointXYZI point;
+      point.x = buf[i];
+      point.y = buf[i + 1];
+      point.z = buf[i + 2];
+      point.intensity = buf[i + 3];
+      cloud->push_back(point);
+    }
+    return cloud;
+  }
+  else
+  {
+    LOG(FATAL) << fmt::format("{} is unknown dataset!", scan_fn);
   }
   return cloud;
 }
@@ -107,6 +149,29 @@ size_t readLidarData(
   std::vector<double> & out_timestamps,
   std::vector<std::string> & out_scan_paths)
 {
+  out_timestamps.clear();
+  out_scan_paths.clear();
+
+  if (isSubstring(data_fn, "kitti"))
+  {
+    std::ifstream fin (data_fn);
+    if (!fin.is_open()) { return 0U; }
+
+    double timestamp;
+    std::string scan_path;
+    std::string line;
+
+    while (std::getline(fin, line))
+    {
+      std::istringstream iss(line);
+      iss >> timestamp;
+      iss >> scan_path;
+      out_timestamps.push_back(timestamp);
+      out_scan_paths.push_back(scan_path);
+    }
+    return out_timestamps.size();
+  }
+
   CsvReader reader(data_fn, 2);
   while (true)
   {
@@ -215,12 +280,15 @@ int main (int argc, char * argv[])
   pcl::console::setVerbosityLevel(pcl::console::L_INFO);
 
   /* Load Dataset */
-  const std::string data_fn = fmt::format("{}/data.csv", FLAGS_sequence_dir);
+  const std::string data_fn = fmt::format("{}/lidar_data.txt", FLAGS_sequence_dir);
   std::vector<double> timestamps;
   std::vector<std::string> scan_paths;
   const auto N_SCANS = readLidarData(data_fn, timestamps, scan_paths);
 
-  const std::string pose_fn = fmt::format("{}/pose.txt", FLAGS_sequence_dir);
+  std::string pose_fn = fmt::format("{}/pose.txt", FLAGS_sequence_dir);
+  if (!FLAGS_pose_fn.empty()) {
+    pose_fn = FLAGS_pose_fn;
+  }
   std::vector<double> pose_timestamps;
   std::vector<Eigen::Vector3d> pose_translations;
   std::vector<Eigen::Quaterniond> pose_quaternions;
@@ -256,6 +324,10 @@ int main (int argc, char * argv[])
   size_t keyframe_idx = 0;
   auto key_cloud = pcl::PointCloud<pcl::PointXYZI>().makeShared();
   auto rgb_cloud = pcl::PointCloud<pcl::PointXYZRGB>().makeShared();
+  auto corner_cloud = pcl::PointCloud<pcl::PointXYZRGB>().makeShared();
+  auto corner_normals = pcl::PointCloud<pcl::Normal>().makeShared();
+  auto corner_cloud_before_nms = pcl::PointCloud<pcl::PointXYZRGB>().makeShared();
+  auto corner_normals_before_nms = pcl::PointCloud<pcl::Normal>().makeShared();
   for (size_t i = 0; i < N_SCANS; i++)
   {
     auto cloud = readScan(scan_paths[i]);
@@ -344,7 +416,14 @@ int main (int argc, char * argv[])
       /* 3. Descriptor Extraction */
       auto t_descriptor_begin = std::chrono::high_resolution_clock::now();
       std::vector<STDesc> stds_vec;
-      std_manager->GenerateSTDescsRgb(key_cloud, (*rgb_cloud), stds_vec);
+      std_manager->GenerateSTDescsRgb(
+        key_cloud,
+        (*rgb_cloud),
+        (*corner_cloud),
+        (*corner_normals),
+        (*corner_cloud_before_nms),
+        (*corner_normals_before_nms),
+        stds_vec);
       auto t_descriptor_end = std::chrono::high_resolution_clock::now();
       descriptor_time.push_back(time_inc(t_descriptor_end, t_descriptor_begin));
 
@@ -388,6 +467,8 @@ int main (int argc, char * argv[])
       LOG(INFO) << "tmp size: " << key_cloud->size() << std::endl;;
       visualizer.setCloud(key_cloud, "sample cloud");
       visualizer.setRGBCloud(rgb_cloud);
+      visualizer.setRGBNormalCloud(corner_cloud, corner_normals, "_curr", 15.0);
+      visualizer.setRGBNormalCloud(corner_cloud_before_nms, corner_normals_before_nms, "_befnms", 10.0);
 
       if (search_result.first > 0
           || cfg.is_benchmark)
@@ -412,16 +493,16 @@ int main (int argc, char * argv[])
         else
         {
           triggle_loop_num++;
-          pcl::toROSMsg(*std_manager->key_cloud_vec_[search_result.first],
-                        pub_cloud);
-          pub_cloud.header.frame_id = "camera_init";
-          pubMatchedCloud.publish(pub_cloud);
-          slow_loop.sleep();
-          pcl::toROSMsg(*std_manager->corner_cloud_vec_[search_result.first],
-                        pub_cloud);
-          pub_cloud.header.frame_id = "camera_init";
-          pubMatchedCorner.publish(pub_cloud);
-          publish_std_pairs(loop_std_pair, pubSTD);
+          // pcl::toROSMsg(*std_manager->key_cloud_vec_[search_result.first],
+          //               pub_cloud);
+          // pub_cloud.header.frame_id = "camera_init";
+          // pubMatchedCloud.publish(pub_cloud);
+          // slow_loop.sleep();
+          // pcl::toROSMsg(*std_manager->corner_cloud_vec_[search_result.first],
+          //               pub_cloud);
+          // pub_cloud.header.frame_id = "camera_init";
+          // pubMatchedCorner.publish(pub_cloud);
+          // publish_std_pairs(loop_std_pair, pubSTD);
         }
       }
 
@@ -430,6 +511,10 @@ int main (int argc, char * argv[])
       ++keyframe_idx;
       key_cloud->clear();
       rgb_cloud->clear();
+      corner_cloud->clear();
+      corner_normals->clear();
+      corner_cloud_before_nms->clear();
+      corner_normals_before_nms->clear();
     }
   }
 

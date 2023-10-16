@@ -566,6 +566,10 @@ void STDescManager::GenerateSTDescs(
 void STDescManager::GenerateSTDescsRgb(
   pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
   pcl::PointCloud<pcl::PointXYZRGB> & rgb_cloud,
+  pcl::PointCloud<pcl::PointXYZRGB> & corner_cloud,
+  pcl::PointCloud<pcl::Normal> & corner_normals,
+  pcl::PointCloud<pcl::PointXYZRGB> & corner_cloud_before_nms,
+  pcl::PointCloud<pcl::Normal> & corner_normals_before_nms,
   std::vector<STDesc> &stds_vec)
 {
   // step1, voxelization and plane dection
@@ -584,8 +588,40 @@ void STDescManager::GenerateSTDescsRgb(
   // step3, extraction corner points
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr corner_points(
       new pcl::PointCloud<pcl::PointXYZINormal>);
-  corner_extractor(voxel_map, input_cloud, corner_points);
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr corner_before_nms(
+      new pcl::PointCloud<pcl::PointXYZINormal>);
+  corner_extractor_with_before(
+    voxel_map,
+    input_cloud,
+    corner_points,
+    corner_before_nms);
   corner_cloud_vec_.push_back(corner_points);
+  for (const auto & corner: corner_points->points)
+  {
+    pcl::PointXYZRGB rgb;
+    pcl::Normal normal;
+    rgb.x = corner.x; rgb.r = 255u;
+    rgb.y = corner.y; rgb.g = 0u;
+    rgb.z = corner.z; rgb.b = 255u;
+    normal.normal_x = corner.normal_x;
+    normal.normal_y = corner.normal_y;
+    normal.normal_z = corner.normal_z;
+    corner_cloud.push_back(rgb);
+    corner_normals.push_back(normal);
+  }
+  for (const auto & corner: corner_before_nms->points)
+  {
+    pcl::PointXYZRGB rgb;
+    pcl::Normal normal;
+    rgb.x = corner.x; rgb.r = 200u;
+    rgb.y = corner.y; rgb.g = 0u;
+    rgb.z = corner.z; rgb.b = 0u;
+    normal.normal_x = corner.normal_x;
+    normal.normal_y = corner.normal_y;
+    normal.normal_z = corner.normal_z;
+    corner_cloud_before_nms.push_back(rgb);
+    corner_normals_before_nms.push_back(normal);
+  }
   // std::cout << "[Description] corners size:" << corner_points->size()
   //           << std::endl;
 
@@ -791,7 +827,7 @@ void STDescManager::init_voxel_map_rgb(
         pt.y = static_cast<float>(point(1));
         pt.z = static_cast<float>(point(2));
         pt.r = 0;
-        pt.g = 0;
+        pt.g = 128;
         pt.b = 255;
         rgb_cloud.points.push_back(pt);
       }
@@ -804,8 +840,8 @@ void STDescManager::init_voxel_map_rgb(
         pt.x = static_cast<float>(point(0));
         pt.y = static_cast<float>(point(1));
         pt.z = static_cast<float>(point(2));
-        pt.r = 255;
-        pt.g = 128;
+        pt.r = 240;
+        pt.g = 120;
         pt.b = 0;
         rgb_cloud.points.push_back(pt);
       }
@@ -1127,6 +1163,144 @@ void STDescManager::corner_extractor(
         }
       } // for (int i = 0; i < 6; i++)
     }
+  }
+
+  non_maxi_suppression(prepare_corner_points);
+
+  if (config_setting_.maximum_corner_num_ > prepare_corner_points->size()) {
+    corner_points = prepare_corner_points;
+  } else {
+    std::vector<std::pair<double, int>> attach_vec;
+    for (size_t i = 0; i < prepare_corner_points->size(); i++) {
+      attach_vec.push_back(std::pair<double, int>(
+          prepare_corner_points->points[i].intensity, i));
+    }
+    std::sort(attach_vec.begin(), attach_vec.end(), attach_greater_sort);
+    for (size_t i = 0; i < config_setting_.maximum_corner_num_; i++) {
+      corner_points->points.push_back(
+          prepare_corner_points->points[attach_vec[i].second]);
+    }
+  }
+}
+
+void STDescManager::corner_extractor_with_before(
+  std::unordered_map<VOXEL_LOC, OctoTree *> & voxel_map,
+  const pcl::PointCloud<pcl::PointXYZI>::Ptr & input_cloud,
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_points,
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr & corner_before_nms)
+{
+
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr prepare_corner_points(
+      new pcl::PointCloud<pcl::PointXYZINormal>);
+
+  // Avoid inconsistent voxel cutting caused by different view point
+  std::vector<Eigen::Vector3i> voxel_round;
+  for (int x = -1; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+      for (int z = -1; z <= 1; z++) {
+        Eigen::Vector3i voxel_inc(x, y, z);
+        voxel_round.push_back(voxel_inc);
+      }
+    }
+  }
+
+  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++)
+  {
+    /* Choose non-plane(boundary) voxels */
+    if (!iter->second->plane_ptr_->is_plane_)
+    {
+      VOXEL_LOC current_position = iter->first;
+      OctoTree * current_octo    = iter->second;
+      int connect_index = -1;
+      for (int i = 0; i < 6; i++) {
+        /* Per Connected Voxel */
+        if (current_octo->connect_[i])
+        {
+          connect_index = i;
+          OctoTree *connect_octo = current_octo->connect_tree_[connect_index];
+          bool use = false;
+          for (int j = 0; j < 6; j++) {
+            if (connect_octo->is_check_connect_[j]) {
+              if (connect_octo->connect_[j]) {
+                use = true;
+              }
+            }
+          }
+          // if no plane near the voxel, skip
+          if (use == false) {
+            continue;
+          }
+
+          // only project voxels with points num > 10
+          if (current_octo->voxel_points_.size() > 10)
+          {
+            Eigen::Vector3d projection_normal =
+                current_octo->connect_tree_[connect_index]->plane_ptr_->normal_;
+            Eigen::Vector3d projection_center =
+                current_octo->connect_tree_[connect_index]->plane_ptr_->center_;
+            std::vector<Eigen::Vector3d> proj_points;
+
+            // proj the boundary voxel and nearby voxel onto adjacent plane
+            for (auto voxel_inc : voxel_round) {
+              VOXEL_LOC connect_project_position = current_position;
+              connect_project_position.x += voxel_inc[0];
+              connect_project_position.y += voxel_inc[1];
+              connect_project_position.z += voxel_inc[2];
+              auto iter_near = voxel_map.find(connect_project_position);
+              if (iter_near != voxel_map.end())
+              {
+                bool skip_flag = false;
+                if (!voxel_map[connect_project_position]
+                     ->plane_ptr_->is_plane_)
+                {
+                  /* One connected voxel (when it's not plane)
+                    can be projected multiple time
+                    by managing "proj_normal_vec_" */
+                  if (voxel_map[connect_project_position]->is_project_) {
+                    for (auto normal : voxel_map[connect_project_position]
+                                           ->proj_normal_vec_) {
+                      Eigen::Vector3d normal_diff = projection_normal - normal;
+                      Eigen::Vector3d normal_add = projection_normal + normal;
+                      // check if repeated project
+                      if (normal_diff.norm() < 0.5 || normal_add.norm() < 0.5) {
+                        skip_flag = true;
+                      }
+                    }
+                  }
+                  if (skip_flag) {
+                    continue;
+                  }
+                  for (size_t j = 0;
+                       j < voxel_map[connect_project_position]->voxel_points_.size();
+                       j++)
+                  {
+                    proj_points.push_back(
+                      voxel_map[connect_project_position]->voxel_points_[j]);
+                    voxel_map[connect_project_position]->is_project_ = true;
+                    voxel_map[connect_project_position]
+                        ->proj_normal_vec_.push_back(projection_normal);
+                  }
+                }
+              }
+            } // for (auto voxel_inc : voxel_round)
+
+            /* Extract Corners */
+            pcl::PointCloud<pcl::PointXYZINormal>::Ptr sub_corner_points(
+                new pcl::PointCloud<pcl::PointXYZINormal>);
+            extract_corner(projection_center, projection_normal, proj_points,
+                           sub_corner_points);
+            for (auto pi : sub_corner_points->points) {
+              prepare_corner_points->push_back(pi);
+            }
+          }
+        }
+      } // for (int i = 0; i < 6; i++)
+    }
+  }
+
+  for (const auto & point: prepare_corner_points->points)
+  {
+    corner_before_nms->push_back(point);
   }
   non_maxi_suppression(prepare_corner_points);
 
