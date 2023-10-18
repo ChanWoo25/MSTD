@@ -169,6 +169,11 @@ public:
       viewer_->removePointCloud(corner_id, v01);
       viewer_->removePointCloud(normal_id, v01);
     }
+    else
+    {
+      id_map[corner_id] = true;
+      id_map[normal_id] = true;
+    }
     pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(rgb_cloud);
     viewer_->addPointCloud<pcl::PointXYZRGB> (rgb_cloud, rgb, corner_id, v01);
     viewer_->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, point_size, corner_id);

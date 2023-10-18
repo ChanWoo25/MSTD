@@ -179,6 +179,7 @@ auto readParamsYamlCpp(
   // key points
   cfg.plane_merge_normal_thre_      = std::stod(config["plane_merge_normal_thre"]);
   cfg.plane_detection_thre_         = std::stod(config["plane_detection_thre"]);
+  cfg.plane_detection_thre_second_  = std::stod(config["plane_detection_thre_second"]);
   cfg.voxel_size_                   = std::stod(config["voxel_size"]);
   cfg.voxel_init_num_               = std::stoi(config["voxel_init_num"]);
   cfg.proj_image_resolution_        = std::stod(config["proj_image_resolution"]);
@@ -705,10 +706,13 @@ void STDescManager::SearchLoop(
   }
 }
 
-void STDescManager::AddSTDescs(const std::vector<STDesc> &stds_vec) {
+void STDescManager::AddSTDescs(
+  const std::vector<STDesc> & stds_vec)
+{
   // update frame id
   current_frame_id_++;
-  for (auto single_std : stds_vec) {
+  for (auto single_std : stds_vec)
+  {
     // calculate the position of single std
     STDesc_LOC position;
     position.x = (int)(single_std.side_length_[0] + 0.5);
@@ -718,9 +722,12 @@ void STDescManager::AddSTDescs(const std::vector<STDesc> &stds_vec) {
     position.b = (int)(single_std.angle_[1]);
     position.c = (int)(single_std.angle_[2]);
     auto iter = data_base_.find(position);
-    if (iter != data_base_.end()) {
+    if (iter != data_base_.end())
+    {
       data_base_[position].push_back(single_std);
-    } else {
+    }
+    else
+    {
       std::vector<STDesc> descriptor_vec;
       descriptor_vec.push_back(single_std);
       data_base_[position] = descriptor_vec;
@@ -1012,7 +1019,8 @@ void STDescManager::build_connection(
             if (normal_diff.norm() <
                     config_setting_.plane_merge_normal_thre_ ||
                 normal_add.norm() <
-                    config_setting_.plane_merge_normal_thre_) {
+                    config_setting_.plane_merge_normal_thre_)
+            {
               current_octo->connect_[i] = true;
               near_octo->connect_[j] = true;
               current_octo->connect_tree_[i] = near_octo;
@@ -1037,9 +1045,11 @@ void STDescManager::build_connection(
 }
 
 void STDescManager::getPlane(
-    const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
-    pcl::PointCloud<pcl::PointXYZINormal>::Ptr &plane_cloud) {
-  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++) {
+  const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr &plane_cloud)
+{
+  for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++)
+  {
     if (iter->second->plane_ptr_->is_plane_) {
       pcl::PointXYZINormal pi;
       pi.x = iter->second->plane_ptr_->center_[0];
@@ -1632,10 +1642,10 @@ void STDescManager::build_stdesc(
   std::vector<STDesc> & stds_vec)
 {
   stds_vec.clear();
-  double scale = 1.0 / config_setting_.std_side_resolution_;
-  int near_num = config_setting_.descriptor_near_num_;
-  double max_dis_threshold = config_setting_.descriptor_max_len_;
-  double min_dis_threshold = config_setting_.descriptor_min_len_;
+  double scale = 1.0 / config_setting_.std_side_resolution_;      // 0.2
+  int near_num = config_setting_.descriptor_near_num_;            // 10 ~ 15
+  double max_dis_threshold = config_setting_.descriptor_max_len_; // 30 ~ 50
+  double min_dis_threshold = config_setting_.descriptor_min_len_; // 2
 
   std::unordered_map<VOXEL_LOC, bool> feat_map;
   pcl::KdTreeFLANN<pcl::PointXYZINormal>::Ptr kd_tree(
@@ -1648,10 +1658,15 @@ void STDescManager::build_stdesc(
   for (size_t i = 0; i < corner_points->size(); i++)
   {
     pcl::PointXYZINormal searchPoint = corner_points->points[i];
-    if (kd_tree->nearestKSearch(searchPoint, near_num, pointIdxNKNSearch,
-                                pointNKNSquaredDistance) > 0) {
-      for (int m = 1; m < near_num - 1; m++) {
-        for (int n = m + 1; n < near_num; n++) {
+    if (kd_tree->nearestKSearch(
+          searchPoint, near_num,
+          pointIdxNKNSearch,
+          pointNKNSquaredDistance) > 0)
+    {
+      for (int m = 1; m < near_num - 1; m++)
+      {
+        for (int n = m + 1; n < near_num; n++)
+        {
           pcl::PointXYZINormal p1 = searchPoint;
           pcl::PointXYZINormal p2 = corner_points->points[pointIdxNKNSearch[m]];
           pcl::PointXYZINormal p3 = corner_points->points[pointIdxNKNSearch[n]];
@@ -1679,6 +1694,7 @@ void STDescManager::build_stdesc(
             continue;
           }
           // re-range the vertex by the side length
+          // increasing order => "a < b < c"
           double temp;
           Eigen::Vector3d A, B, C;
           Eigen::Vector3i l1, l2, l3;
@@ -1718,7 +1734,8 @@ void STDescManager::build_stdesc(
           VOXEL_LOC position((int64_t)d_p.x, (int64_t)d_p.y, (int64_t)d_p.z);
           auto iter = feat_map.find(position);
           Eigen::Vector3d normal_1, normal_2, normal_3;
-          if (iter == feat_map.end()) {
+          if (iter == feat_map.end())
+          {
             Eigen::Vector3d vertex_attached;
             if (l1[0] == l2[0]) {
               A << p1.x, p1.y, p1.z;
@@ -2176,51 +2193,100 @@ void STDescManager::PlaneGeomrtricIcp(
   // std::cout << "useful match for icp:" << useful_match << std::endl;
 }
 
+
+void checkPlane(
+  const std::vector<Eigen::Vector3d> & points,
+  Eigen::Matrix3d & covmat,
+  Eigen::Vector3d & center,
+  std::array<Eigen::Vector3d, 3> & eigen_vecs,
+  std::array<double, 3> & eigen_vals)
+{
+  covmat = Eigen::Matrix3d::Zero();
+  center = Eigen::Vector3d::Zero();
+  for (const auto & pt: points)
+  {
+    covmat += pt * pt.transpose();
+    center += pt;
+  }
+  const auto n_points = static_cast<double>(points.size());
+  center = center / n_points;
+  covmat = covmat / n_points;
+  covmat = covmat - center * center.transpose();
+
+  auto eigen_solver
+    = Eigen::EigenSolver<Eigen::Matrix3d>(covmat);
+  Eigen::Matrix3cd evecs = eigen_solver.eigenvectors();
+  Eigen::Vector3cd evals = eigen_solver.eigenvalues();
+  Eigen::Vector3d real_evals = evals.real();
+
+  Eigen::Index evalsMin, evalsMax;
+  real_evals.minCoeff(&evalsMin);
+  real_evals.maxCoeff(&evalsMax);
+  // real_evals.rowwise().sum().minCoeff(&evalsMin);
+  // real_evals.rowwise().sum().maxCoeff(&evalsMax);
+  const auto idx_1st = static_cast<int>(evalsMin);
+  const auto idx_2nd = static_cast<int>(3 - evalsMin - evalsMax);
+  const auto idx_3rd = static_cast<int>(evalsMax);
+  eigen_vals[0] = real_evals(idx_1st);
+  eigen_vals[1] = real_evals(idx_2nd);
+  eigen_vals[2] = real_evals(idx_3rd);
+  eigen_vecs[0] = Eigen::Vector3d(evecs.real().col(idx_1st));
+  eigen_vecs[1] = Eigen::Vector3d(evecs.real().col(idx_2nd));
+  eigen_vecs[2] = Eigen::Vector3d(evecs.real().col(idx_3rd));
+}
+
 void OctoTree::init_plane() {
   plane_ptr_->covariance_ = Eigen::Matrix3d::Zero();
   plane_ptr_->center_ = Eigen::Vector3d::Zero();
   plane_ptr_->normal_ = Eigen::Vector3d::Zero();
   plane_ptr_->points_size_ = voxel_points_.size();
   plane_ptr_->radius_ = 0;
-  for (auto pi : voxel_points_) {
-    plane_ptr_->covariance_ += pi * pi.transpose();
-    plane_ptr_->center_ += pi;
-  }
-  plane_ptr_->center_ = plane_ptr_->center_ / plane_ptr_->points_size_;
-  plane_ptr_->covariance_ =
-      plane_ptr_->covariance_ / plane_ptr_->points_size_ -
-      plane_ptr_->center_ * plane_ptr_->center_.transpose();
-  Eigen::EigenSolver<Eigen::Matrix3d> es(plane_ptr_->covariance_);
-  Eigen::Matrix3cd evecs = es.eigenvectors();
-  Eigen::Vector3cd evals = es.eigenvalues();
-  Eigen::Vector3d evalsReal;
-  evalsReal = evals.real();
-  Eigen::Matrix3d::Index evalsMin, evalsMax;
-  evalsReal.rowwise().sum().minCoeff(&evalsMin);
-  evalsReal.rowwise().sum().maxCoeff(&evalsMax);
-  int evalsMid = 3 - evalsMin - evalsMax;
-  if (evalsReal(evalsMin) < config_setting_.plane_detection_thre_)
-  {
-    plane_ptr_->normal_ << evecs.real()(0, evalsMin),
-                           evecs.real()(1, evalsMin),
-                           evecs.real()(2, evalsMin);
-    plane_ptr_->min_eigen_value_ = evalsReal(evalsMin);
-    plane_ptr_->radius_ = sqrt(evalsReal(evalsMax));
-    plane_ptr_->is_plane_ = true;
+  // for (auto pi : voxel_points_) {
+  //   plane_ptr_->covariance_ += pi * pi.transpose();
+  //   plane_ptr_->center_ += pi;
+  // }
+  // plane_ptr_->center_ = plane_ptr_->center_ / plane_ptr_->points_size_;
+  // plane_ptr_->covariance_ =
+  //     plane_ptr_->covariance_ / plane_ptr_->points_size_ -
+  //     plane_ptr_->center_ * plane_ptr_->center_.transpose();
+  // Eigen::EigenSolver<Eigen::Matrix3d> es(plane_ptr_->covariance_);
+  // Eigen::Matrix3cd evecs = es.eigenvectors();
+  // Eigen::Vector3cd evals = es.eigenvalues();
+  // Eigen::Vector3d evalsReal;
+  // evalsReal = evals.real();
+  // Eigen::Matrix3d::Index evalsMin, evalsMax;
+  // evalsReal.rowwise().sum().minCoeff(&evalsMin);
+  // evalsReal.rowwise().sum().maxCoeff(&evalsMax);
+  // int evalsMid = 3 - evalsMin - evalsMax;
 
-    plane_ptr_->intercept_ = -(plane_ptr_->normal_(0) * plane_ptr_->center_(0) +
-                               plane_ptr_->normal_(1) * plane_ptr_->center_(1) +
-                               plane_ptr_->normal_(2) * plane_ptr_->center_(2));
+  std::array<Eigen::Vector3d, 3> eigen_vecs;
+  std::array<double, 3> eigen_vals;
+  checkPlane(
+    voxel_points_,
+    plane_ptr_->covariance_, plane_ptr_->center_,
+    eigen_vecs, eigen_vals);
+  // if (   eigen_vals[0] >= config_setting_.plane_detection_thre_)
+  if (   eigen_vals[0] >= config_setting_.plane_detection_thre_
+      || eigen_vals[1] <= config_setting_.plane_detection_thre_second_)
+  {
+    plane_ptr_->is_plane_ = false;
+  }
+  else
+  {
+    plane_ptr_->normal_ << eigen_vecs[0];
+    plane_ptr_->min_eigen_value_ = eigen_vals[0];
+    plane_ptr_->radius_ = sqrt(eigen_vals[2]);
+    plane_ptr_->is_plane_ = true;
+    plane_ptr_->intercept_
+      = - (  plane_ptr_->normal_(0) * plane_ptr_->center_(0)
+          + plane_ptr_->normal_(1) * plane_ptr_->center_(1)
+          + plane_ptr_->normal_(2) * plane_ptr_->center_(2));
     plane_ptr_->p_center_.x = plane_ptr_->center_(0);
     plane_ptr_->p_center_.y = plane_ptr_->center_(1);
     plane_ptr_->p_center_.z = plane_ptr_->center_(2);
     plane_ptr_->p_center_.normal_x = plane_ptr_->normal_(0);
     plane_ptr_->p_center_.normal_y = plane_ptr_->normal_(1);
     plane_ptr_->p_center_.normal_z = plane_ptr_->normal_(2);
-  }
-  else
-  {
-    plane_ptr_->is_plane_ = false;
   }
 }
 

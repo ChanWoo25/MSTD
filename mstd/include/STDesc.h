@@ -217,9 +217,17 @@ public:
     }
     plane_ptr_ = new Plane;
   }
+
   void init_plane();
   void init_octo_tree();
 };
+
+void checkPlane(
+  const std::vector<Eigen::Vector3d> & points,
+  Eigen::Matrix3d & covmat,
+  Eigen::Vector3d & center,
+  std::array<Eigen::Vector3d, 3> & eigen_vecs,
+  std::array<double, 3> & eigen_vals);
 
 void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
                          double voxel_size);
