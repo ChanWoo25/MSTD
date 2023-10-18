@@ -192,6 +192,75 @@ size_t readLidarData(
   return out_timestamps.size();
 }
 
+void readCalibData(
+  const std::string & data_fn,
+  Eigen::Vector3d & out_translation,
+  Eigen::Quaterniond & out_quaternion)
+{
+  std::ifstream fin (data_fn);
+  if (!fin.is_open())
+  {
+    LOG(ERROR) << fmt::format(
+      "Couldn't open FILE {}", data_fn);
+    out_translation = Eigen::Vector3d::Zero();
+    out_quaternion = Eigen::Quaterniond::Identity();
+    return;
+  }
+
+  std::string line;
+  if (std::getline(fin, line))
+  {
+    std::istringstream iss(line);
+    iss >> out_translation(0);
+    iss >> out_translation(1);
+    iss >> out_translation(2);
+    iss >> out_quaternion.x();
+    iss >> out_quaternion.y();
+    iss >> out_quaternion.z();
+    iss >> out_quaternion.w();
+  }
+  else
+  {
+    LOG(ERROR) << fmt::format(
+      "Couldn't read FILE {}", data_fn);
+    out_translation = Eigen::Vector3d::Zero();
+    out_quaternion = Eigen::Quaterniond::Identity();
+  }
+}
+
+void procKittiPose(
+  std::vector<Eigen::Vector3d> & out_translations,
+  std::vector<Eigen::Quaterniond> & out_quaternions)
+{
+  // Pose is transformed into lidar pose!
+  Eigen::Matrix4d KITTI_CAM2LIDAR;
+  KITTI_CAM2LIDAR <<
+    -1.857739385241e-03, -9.999659513510e-01, -8.039975204516e-03, -4.784029760483e-03,
+    -6.481465826011e-03,  8.051860151134e-03, -9.999466081774e-01, -7.337429464231e-02,
+     9.999773098287e-01, -1.805528627661e-03, -6.496203536139e-03, -3.339968064433e-01,
+          0, 0, 0, 1;
+
+  Eigen::Matrix4d tf_origin;
+  tf_origin <<
+     0,  0,  1,  0,
+    -1,  0,  0,  0,
+     0, -1,  0,  0,
+     0,  0,  0,  1;
+
+  for (size_t i = 0; i < out_translations.size(); i++)
+  {
+    auto & translation = out_translations[i];
+    auto & quaternion = out_quaternions[i];
+    Eigen::Matrix4d tf4x4_cam = Eigen::Matrix4d::Identity();
+    tf4x4_cam.block<3,3>(0,0) = quaternion.toRotationMatrix();
+    tf4x4_cam.block<3,1>(0,3) = translation;
+    // Eigen::Matrix4d tf4x4_lidar = tf4x4_cam * KITTI_CAM2LIDAR;
+    Eigen::Matrix4d tf4x4_lidar = tf_origin * tf4x4_cam * KITTI_CAM2LIDAR;
+    quaternion = Eigen::Quaterniond(tf4x4_lidar.block<3,3>(0,0));
+    translation = tf4x4_lidar.block<3,1>(0,3);
+  }
+}
+
 size_t readPoseData(
   const std::string & data_fn,
   std::vector<double> & out_timestamps,
@@ -225,6 +294,14 @@ size_t readPoseData(
     out_translations.push_back(translation);
     out_quaternions.push_back(quaternion);
   }
+
+  // if (isSubstring(data_fn, "kitti"))
+  // {
+  //   LOG(INFO) << "procKittiPose";
+  //   procKittiPose(
+  //     out_translations,
+  //     out_quaternions);
+  // }
 
   CHECK(out_timestamps.size() == out_translations.size());
   CHECK(out_timestamps.size() == out_quaternions.size());
@@ -285,10 +362,14 @@ int main (int argc, char * argv[])
   std::vector<std::string> scan_paths;
   const auto N_SCANS = readLidarData(data_fn, timestamps, scan_paths);
 
+
+
+
   std::string pose_fn = fmt::format("{}/pose.txt", FLAGS_sequence_dir);
   if (!FLAGS_pose_fn.empty()) {
     pose_fn = FLAGS_pose_fn;
   }
+  LOG(INFO) << "Load Poses from " << pose_fn;
   std::vector<double> pose_timestamps;
   std::vector<Eigen::Vector3d> pose_translations;
   std::vector<Eigen::Quaterniond> pose_quaternions;
@@ -297,6 +378,51 @@ int main (int argc, char * argv[])
     pose_timestamps,
     pose_translations,
     pose_quaternions);
+
+
+  // std::string pose_fn2 = FLAGS_pose_fn;
+  // std::vector<double> pose_timestamps2;
+  // std::vector<Eigen::Vector3d> pose_translations2;
+  // std::vector<Eigen::Quaterniond> pose_quaternions2;
+  // const auto N_POSES2 = readPoseData(
+  //   pose_fn2,
+  //   pose_timestamps2,
+  //   pose_translations2,
+  //   pose_quaternions2);
+
+  // LOG(INFO) << "N_1: " << N_POSES;
+  // LOG(INFO) << "N_2: " << N_POSES2;
+  // for (int i = 0; i < 10; i++)
+  // {
+  //   Eigen::Matrix4d Tr1 = Eigen::Matrix4d::Identity();
+  //   Eigen::Matrix4d Tr1_inv = Eigen::Matrix4d::Identity();
+  //   Eigen::Matrix4d Tr2 = Eigen::Matrix4d::Identity();
+  //   Eigen::Matrix4d TrR = Eigen::Matrix4d::Identity();
+  //   Tr1.block<3,3>(0,0) = pose_quaternions[i].toRotationMatrix();
+  //   Tr2.block<3,3>(0,0) = pose_quaternions2[i].toRotationMatrix();
+  //   Tr1.block<3,1>(0,3) = pose_translations[i];
+  //   Tr2.block<3,1>(0,3) = pose_translations2[i];
+
+  //   Tr1_inv.block<3,3>(0,0) = Tr1.block<3,3>(0,0).transpose();
+  //   Tr1_inv.block<3,1>(0,3) = - Tr1.block<3,3>(0,0).transpose() * Tr1.block<3,1>(0,3);
+  //   TrR = Tr1_inv * Tr2;
+  //   LOG(INFO) << '\n' << TrR;
+
+  // }
+
+
+  /* Load base2lidar */
+  auto base2lidar_fn = fmt::format(
+    "{}/calibration/Base2Lidar.txt",
+    FLAGS_sequence_dir);
+  Eigen::Vector3d    base2lidar_translation;
+  Eigen::Quaterniond base2lidar_quaternion;
+  readCalibData(
+    base2lidar_fn,
+    base2lidar_translation,
+    base2lidar_quaternion);
+  LOG(INFO) << base2lidar_translation;
+  LOG(INFO) << base2lidar_quaternion.coeffs();
 
   /* Ready to log results */
   create_directories(FLAGS_result_dir);
@@ -339,9 +465,9 @@ int main (int argc, char * argv[])
 
     down_sampling_voxel(*cloud, cfg.ds_size_);
     const auto n_points_after_ds = cloud->size();
-    LOG(INFO) << fmt::format(
-      "#{:02d} Time({:.6f}) Size({} -> {})",
-      i, timestamps[i], n_points_before_ds, n_points_after_ds);
+    // LOG(INFO) << fmt::format(
+    //   "#{:02d} Time({:.6f}) Size({} -> {})",
+    //   i, timestamps[i], n_points_before_ds, n_points_after_ds);
 
     const auto & timestamp = timestamps[i];
     Eigen::Vector3d translation;
@@ -371,7 +497,12 @@ int main (int argc, char * argv[])
 
     for (auto & point: cloud->points)
     {
-      Eigen::Vector3d pv = point2vec(point);
+      Eigen::Vector3d pt_wrt_lidar = point2vec(point);
+      // Eigen::Vector3d pt_wrt_base
+      //   = base2lidar_quaternion.toRotationMatrix() * pt_wrt_lidar
+      //   + base2lidar_translation;
+      Eigen::Vector3d pt_wrt_world
+        = rotation * pt_wrt_lidar + translation;
 
       // const auto int_idx = static_cast<int>(std::floor(cloud.points[i].intensity / intensity_resolution));
       // if (0 <= int_idx && int_idx < 1000) {
@@ -386,9 +517,8 @@ int main (int argc, char * argv[])
       //   reflectivities[ref_idx]++;
       // }
 
-      pv = rotation * pv + translation;
-      point = vec2point(pv);
-      key_cloud->points.push_back(point);
+      auto pt_pcl = vec2point(pt_wrt_world);
+      key_cloud->points.push_back(pt_pcl);
     }
 
     // LOG(INFO) << fmt::format(
@@ -464,7 +594,7 @@ int main (int argc, char * argv[])
       //   std_manager->key_positions_.push_back(translation);
       //   std_manager->key_times_.push_back(laser_time);
       // }
-      LOG(INFO) << "tmp size: " << key_cloud->size() << std::endl;;
+      // LOG(INFO) << "tmp size: " << key_cloud->size() << std::endl;;
       visualizer.setCloud(key_cloud, "sample cloud");
       visualizer.setRGBCloud(rgb_cloud);
       visualizer.setRGBNormalCloud(corner_cloud, corner_normals, "_curr", 15.0);
@@ -475,7 +605,7 @@ int main (int argc, char * argv[])
       {
         if (cfg.is_benchmark)
         {
-          // ofile << std::fixed;
+          // ofile << std::fixeds;
           // ofile.precision(6);
           // ofile << laser_time << ',';
           // ofile << search_result.second << ',';

@@ -34,15 +34,14 @@
 #   --sequence_dir=/data/datasets/dataset_std/park_avia_01 \
 #   --result_dir=/data/results/MSTD/231011_Test/park_avia_01-z_max=15.0
 
-# ./bin/main_std \
-#   --sequence_dir=/data/datasets/dataset_kitti/00 \
-#   --result_dir=/data/results/MSTD/231013_Test/kitti_default \
-#   --pose_fn=/data/datasets/dataset_std/kitti/kitti00.txt
-
-
-./bin/main_scancontext \
+./bin/main_std \
   --sequence_dir=/data/datasets/dataset_kitti/00 \
   --result_dir=/data/results/MSTD/231013_Test/kitti_default \
-  --pose_fn=/data/datasets/dataset_std/kitti/kitti00.txt \
-  --visualize=false
+  --pose_fn=/data/datasets/dataset_std/kitti/kitti00.txt
+
+# ./bin/main_scancontext \
+#   --sequence_dir=/data/datasets/dataset_kitti/00 \
+#   --result_dir=/data/results/MSTD/231013_Test/kitti_default \
+#   --pose_fn=/data/datasets/dataset_std/kitti/kitti00.txt \
+#   --visualize=false
 

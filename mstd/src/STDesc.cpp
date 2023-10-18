@@ -1,8 +1,10 @@
 #include <STDesc.h>
 
-void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
-                         double voxel_size) {
-  int intensity = rand() % 255;
+void down_sampling_voxel(
+  pcl::PointCloud<pcl::PointXYZI> &pl_feat,
+  double voxel_size)
+{
+  // int intensity = rand() % 255;
   if (voxel_size < 0.01) {
     return;
   }
