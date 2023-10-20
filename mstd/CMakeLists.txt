@@ -66,6 +66,7 @@ set_target_properties(main_std PROPERTIES
 add_executable(main_scancontext
   "main_scancontext.cpp"
   "src/STDesc.cpp"
+  "src/Profiler.cpp"
   "include/Scancontext/Scancontext.cpp")
 target_link_libraries(main_scancontext
   fmt::fmt

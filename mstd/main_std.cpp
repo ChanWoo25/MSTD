@@ -13,6 +13,9 @@
 #include <pcl/point_types.h>
 #include <pcl/common/transforms.h>
 #include <pcl/registration/gicp.h>
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include "opencv2/imgproc/imgproc.hpp"
 
 #include <fstream>
 #include <string>
@@ -39,7 +42,24 @@ bool isSubstring(
   const std::string & str,
   const std::string & substr)
 {
-    return str.find(substr) != std::string::npos;
+  return str.find(substr) != std::string::npos;
+}
+
+auto readImage(const std::string & img_fn) -> cv::Mat
+{
+  const auto fn = fmt::format(
+    "{}/{}", FLAGS_sequence_dir, img_fn);
+
+  // Load the image in grayscale
+  cv::Mat image = cv::imread(fn, cv::IMREAD_GRAYSCALE);
+
+  if (image.empty())
+  {
+    LOG(ERROR) << "Error: Could not open or load the image.";
+    return cv::Mat();
+  }
+
+  return image;
 }
 
 auto readScan(
@@ -142,6 +162,65 @@ void readPCDHeader(
   }
 
   pcd_file.close();
+}
+
+size_t readImageData(
+  const std::string & data_fn,
+  std::vector<double> & out_timestamps,
+  std::vector<std::string> & out_image_paths)
+{
+  /* read lidar_data.csv too, */
+  out_timestamps.clear();
+  out_image_paths.clear();
+
+  if (isSubstring(data_fn, "kitti"))
+  {
+    std::ifstream fin (data_fn);
+    if (!fin.is_open()) { return 0U; }
+
+    double timestamp;
+    std::string scan_path;
+    std::string line;
+
+    while (std::getline(fin, line))
+    {
+      std::istringstream iss(line);
+      iss >> timestamp;
+      iss >> scan_path;
+      out_timestamps.push_back(timestamp);
+    }
+
+    auto N = out_timestamps.size();
+    for (size_t i = 0; i < N; ++i)
+    {
+      out_image_paths.push_back(fmt::format(
+        "image_0/{:06d}.png", i));
+    }
+
+    LOG(INFO) << out_image_paths[0];
+    LOG(INFO) << out_image_paths[5];
+    LOG(INFO) << out_image_paths.back();
+    return out_timestamps.size();
+  }
+
+  CsvReader reader(data_fn, 2);
+  while (true)
+  {
+    auto words = reader.next();
+    if (words.empty()) { break; }
+    double timestamp = std::stod(words[0]);
+    std::string scan_path = words[1];
+    out_timestamps.push_back(timestamp);
+    out_image_paths.push_back(scan_path);
+  }
+  CHECK(out_timestamps.size() == out_image_paths.size());
+  LOG(INFO) << fmt::format("Sequnce Path: {}", data_fn);
+  LOG(INFO) << fmt::format(
+    "Sequnce Length: {:.4f} ~ {:.4f} (#{} | {})",
+    out_timestamps.front(), out_timestamps.back(),
+    out_timestamps.size(),
+    out_timestamps.back() - out_timestamps.front());
+  return out_timestamps.size();
 }
 
 size_t readLidarData(
@@ -360,8 +439,11 @@ int main (int argc, char * argv[])
   const std::string data_fn = fmt::format("{}/lidar_data.txt", FLAGS_sequence_dir);
   std::vector<double> timestamps;
   std::vector<std::string> scan_paths;
+  std::vector<double> img_timestamps;
+  std::vector<std::string> img_paths;
   const auto N_SCANS = readLidarData(data_fn, timestamps, scan_paths);
-
+  const auto N_IMAGE = readImageData(data_fn, img_timestamps, img_paths);
+  CHECK(img_timestamps.size() == timestamps.size());
 
 
 
@@ -421,8 +503,8 @@ int main (int argc, char * argv[])
     base2lidar_fn,
     base2lidar_translation,
     base2lidar_quaternion);
-  LOG(INFO) << base2lidar_translation;
-  LOG(INFO) << base2lidar_quaternion.coeffs();
+  // LOG(INFO) << base2lidar_translation;
+  // LOG(INFO) << base2lidar_quaternion.coeffs();
 
   /* Ready to log results */
   create_directories(FLAGS_result_dir);
@@ -454,6 +536,7 @@ int main (int argc, char * argv[])
   auto corner_normals = pcl::PointCloud<pcl::Normal>().makeShared();
   auto corner_cloud_before_nms = pcl::PointCloud<pcl::PointXYZRGB>().makeShared();
   auto corner_normals_before_nms = pcl::PointCloud<pcl::Normal>().makeShared();
+  std::vector<cv::Mat> imgs;
   for (size_t i = 0; i < N_SCANS; i++)
   {
     auto cloud = readScan(scan_paths[i]);
@@ -462,6 +545,16 @@ int main (int argc, char * argv[])
     // LOG(INFO) << fmt::format(
     //   "#{:02d} Time({:.6f}) Size({}",
     //   i, timestamps[i], cloud->size());
+
+    /* Load images */
+    if ((i+1UL) % 5 == 0)
+    {
+      if (imgs.size() == 2UL) { imgs.clear(); }
+      imgs.push_back(readImage(img_paths[i]));
+      LOG(INFO) << img_paths[i];
+      LOG(INFO) << imgs.back().rows << ',' << imgs.back().cols;
+    }
+
 
     down_sampling_voxel(*cloud, cfg.ds_size_);
     const auto n_points_after_ds = cloud->size();
@@ -637,6 +730,115 @@ int main (int argc, char * argv[])
       }
 
       visualizer.spin();
+
+      if (imgs.size() == 2UL)
+      {
+        /* Harris Corner Detector */
+        // int blockSize = 2;
+        // int apertureSize = 3;
+        // double k = 0.04;
+        // int thresh = 120;
+        // int max_thresh = 255;
+
+        // cv::Mat dst0 = cv::Mat::zeros( imgs[0].size(), CV_32FC1 );
+        // cv::Mat dst1 = cv::Mat::zeros( imgs[1].size(), CV_32FC1 );
+        // cornerHarris(imgs[0], dst0, blockSize, apertureSize, k );
+        // cornerHarris(imgs[1], dst1, blockSize, apertureSize, k );
+        // cv::Mat dst_norm0, dst_norm_scaled0;
+        // cv::Mat dst_norm1, dst_norm_scaled1;
+        // normalize(dst0, dst_norm0, 0, 255, cv::NORM_MINMAX, CV_32FC1, cv::Mat() );
+        // normalize(dst1, dst_norm1, 0, 255, cv::NORM_MINMAX, CV_32FC1, cv::Mat() );
+        // convertScaleAbs( dst_norm0, dst_norm_scaled0 );
+        // convertScaleAbs( dst_norm1, dst_norm_scaled1 );
+        // for( int i = 0; i < dst_norm0.rows ; i++ )
+        // {
+        //   for( int j = 0; j < dst_norm0.cols; j++ )
+        //   {
+        //     if( (int) dst_norm0.at<float>(i,j) > thresh )
+        //     {
+        //       cv::circle(
+        //         dst_norm_scaled0,
+        //         cv::Point(j,i),
+        //         5, cv::Scalar(0), 2, 8, 0);
+        //     }
+        //     if( (int) dst_norm1.at<float>(i,j) > thresh )
+        //     {
+        //       cv::circle(
+        //         dst_norm_scaled1,
+        //         cv::Point(j,i),
+        //         5, cv::Scalar(0), 2, 8, 0);
+        //     }
+        //   }
+        // }
+
+        int maxCorners = 23;
+        int maxTrackbar = 100;
+        cv::RNG rng(12345);
+        maxCorners = MAX(maxCorners, 1);
+        double qualityLevel = 0.01;
+        double minDistance = 10;
+        int blockSize = 3, gradientSize = 3;
+        bool useHarrisDetector = false;
+        double k = 0.04;
+        int radius = 2;
+
+        cv::Mat dst0 = imgs[0].clone();
+        cv::Mat dst1 = imgs[0].clone();
+        std::vector<cv::Point2f> corners0;
+        std::vector<cv::Point2f> corners1;
+
+        goodFeaturesToTrack(imgs[0],
+          corners0,
+          maxCorners,
+          qualityLevel,
+          minDistance,
+          cv::Mat(),
+          blockSize,
+          gradientSize,
+          useHarrisDetector,
+          k );
+
+        for( size_t i = 0; i < corners0.size(); i++ )
+        {
+          circle(dst0,
+            corners0[i],
+            radius,
+            cv::Scalar(rng.uniform(0,255),
+                       rng.uniform(0, 256),
+                       rng.uniform(0, 256)),
+            cv::FILLED );
+        }
+
+        goodFeaturesToTrack(imgs[1],
+          corners1,
+          maxCorners,
+          qualityLevel,
+          minDistance,
+          cv::Mat(),
+          blockSize,
+          gradientSize,
+          useHarrisDetector,
+          k );
+
+        for( size_t i = 0; i < corners1.size(); i++ )
+        {
+          circle(dst1,
+            corners1[i],
+            radius,
+            cv::Scalar(rng.uniform(0,255),
+                       rng.uniform(0, 256),
+                       rng.uniform(0, 256)),
+            cv::FILLED );
+        }
+
+        // Display the image
+        cv::imshow("Grayscale Image 0", imgs[0]);
+        cv::imshow("Corner 0", dst0);
+        cv::waitKey(0);
+        cv::imshow("Corner 1", dst1);
+        cv::imshow("Grayscale Image 1", imgs[1]);
+        cv::waitKey(0);
+      }
 
       ++keyframe_idx;
       key_cloud->clear();

@@ -77,7 +77,7 @@ public:
     viewer_->addCoordinateSystem (1.0, "v00", v00);
     viewer_->addCoordinateSystem (1.0, "v01", v01);
     viewer_->setBackgroundColor (0.1, 0.1, 0.1, v00);
-    viewer_->setBackgroundColor (0.9, 0.9, 0.9, v01);
+    viewer_->setBackgroundColor (0.0, 0.0, 0.0, v01);
   }
 
   ~MyDebugVisualizer()
@@ -154,6 +154,20 @@ public:
           2.0, cloud_id, v00);
       }
     }
+  }
+
+
+  void addCloud(
+    pcl::shared_ptr<pcl::PointCloud<PointType>> & cloud,
+    const std::string & cloud_id)
+  {
+    // std::unique_lock<std::shared_mutex> lock(smtx_cloud_);
+    static int i = 0;
+    std::string cid = cloud_id + std::to_string(i++);
+    viewer_->addPointCloud<PointType>(cloud, cid, v01);
+    viewer_->setPointCloudRenderingProperties(
+      pcl::visualization::PCL_VISUALIZER_POINT_SIZE,
+      1.0, cid, v01);
   }
 
   void setRGBNormalCloud(

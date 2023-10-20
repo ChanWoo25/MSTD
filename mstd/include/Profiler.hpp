@@ -14,7 +14,7 @@
 // User-defined
 #include <NonCopyableClass.hpp>
 
-namespace cwlee {
+namespace util {
 
 using HClock = std::chrono::high_resolution_clock;
 using Duration = std::chrono::duration<double, std::milli>;
@@ -78,4 +78,4 @@ private:
   std::string display_all_time_logs_();
 };
 
-} // namespace cwlee
+} // namespace util

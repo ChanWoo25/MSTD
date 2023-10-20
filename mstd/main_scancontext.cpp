@@ -2,6 +2,7 @@
 #include <CsvReader.hpp>
 #include <MyDebugVisualizer.hpp>
 #include <Scancontext/Scancontext.h>
+#include <Profiler.hpp>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -25,8 +26,11 @@ namespace fs = std::filesystem;
 DEFINE_string(sequence_dir, "", "");
 DEFINE_string(pose_fn, "", "");
 DEFINE_string(result_dir, "", "");
+DEFINE_string(seq_name, "", "");
 DEFINE_bool(visualize, true, "");
 DEFINE_int32(SC_CAND_NUM, 10, "");
+
+std::string mstd_results = "/data/results/MSTD/ScanContext";
 
 void create_directories (
   const std::string & dir_path)
@@ -272,6 +276,22 @@ bool queryPoseByTimestamp(
   return true;
 }
 
+pcl::PointCloud<pcl::PointXYZI> keyCloudToMid(
+  pcl::shared_ptr<pcl::PointCloud<pcl::PointXYZI>> & key_cloud,
+  Eigen::Vector3d & translation,
+  Eigen::Matrix3d & rotation)
+{
+  pcl::PointCloud<pcl::PointXYZI> cloud;
+  for (const auto & pt : key_cloud->points)
+  {
+    Eigen::Vector3d pv = point2vec(pt);
+    pv = rotation.transpose() * (pv - translation);
+    auto point = vec2point(pv);
+    cloud.points.push_back(point);
+  }
+  return cloud;
+}
+
 int main (int argc, char * argv[])
 {
   google::SetVersionString("1.0.0");
@@ -303,12 +323,23 @@ int main (int argc, char * argv[])
 
   /* Ready to log results */
   create_directories(FLAGS_result_dir);
-  create_directories(fmt::format("{}/pseudo_img", FLAGS_result_dir));
-  const auto score_fn = fmt::format("{}/result.csv", FLAGS_result_dir);
-  const auto ctime_fn = fmt::format("{}/consumption.csv", FLAGS_result_dir);
-  std::ofstream fout_score, fout_ctime;
+  // create_directories(fmt::format("{}/pseudo_img", FLAGS_result_dir));
+  create_directories(fmt::format(
+    "{}/Cand{}/{}",
+    mstd_results, FLAGS_SC_CAND_NUM, FLAGS_seq_name));
+  const auto score_fn = fmt::format(
+    "{}/Cand{}/{}/result.txt",
+    mstd_results, FLAGS_SC_CAND_NUM, FLAGS_seq_name);
+  const auto ctime_fn = fmt::format(
+    "{}/Cand{}/{}/ctime.txt",
+    mstd_results, FLAGS_SC_CAND_NUM, FLAGS_seq_name);
+  const auto loop_fn = fmt::format(
+    "{}/Cand{}/{}/loop.txt",
+    mstd_results, FLAGS_SC_CAND_NUM, FLAGS_seq_name);
+  std::ofstream fout_score, fout_ctime, fout_loop;
   fout_score.open(score_fn);
   fout_ctime.open(ctime_fn);
+  fout_loop.open(loop_fn);
   if (fout_score.is_open()) { LOG(INFO) << "Opened: " << score_fn; }
   if (fout_ctime.is_open()) { LOG(INFO) << "Opened: " << ctime_fn; }
   CHECK(fout_score.is_open() && fout_ctime.is_open());
@@ -336,7 +367,16 @@ int main (int argc, char * argv[])
   // float filter_size = 0.25;
   // downSizeFilterScancontext.setLeafSize(filter_size, filter_size, filter_size);
   SCManager scManager;
+  scManager.setNumCandidates(FLAGS_SC_CAND_NUM);
 
+  std::vector<Eigen::Vector3d> key_translations;
+  std::vector<double> key_timestamps;
+  std::vector<Eigen::Vector3d> all_translations;
+  std::vector<Eigen::Matrix3d> all_rotations;
+  Eigen::Vector3d ref_translation;
+  Eigen::Matrix3d ref_rotation;
+
+  std::vector<Eigen::Vector3d> tmp_trs;
 
   for (size_t i = 0; i < N_SCANS; i++)
   {
@@ -347,7 +387,7 @@ int main (int argc, char * argv[])
     //   "#{:02d} Time({:.6f}) Size({}",
     //   i, timestamps[i], cloud->size());
 
-    down_sampling_voxel(*cloud, cfg.ds_size_);
+    // down_sampling_voxel(*cloud, 0.4);
     const auto n_points_after_ds = cloud->size();
     // LOG(INFO) << fmt::format(
     //   "#{:02d} Time({:.6f}) Size({} -> {})",
@@ -364,6 +404,8 @@ int main (int argc, char * argv[])
       translation,
       quaternion);
     Eigen::Matrix3d rotation = quaternion.toRotationMatrix();
+    all_translations.push_back(translation);
+    all_rotations.push_back(rotation);
 
     if (succ)
     {
@@ -423,10 +465,18 @@ int main (int argc, char * argv[])
 
     if (scan_cnt % 10U == 0)
     {
+      key_translations.push_back(all_translations[i-4]);
+      key_timestamps.push_back(timestamp);
+
+      auto scanCloud = keyCloudToMid(key_cloud, all_translations[i-4], all_rotations[i-4]).makeShared();
+      down_sampling_voxel(*scanCloud, 0.4);
+
       /* 3. Descriptor Extraction */
       auto t_descriptor_begin = std::chrono::high_resolution_clock::now();
       std::vector<STDesc> stds_vec;
-      scManager.makeAndSaveScancontextAndKeys(*key_cloud);
+      util::Profiler::Start("1. makeScanContext");
+      scManager.makeAndSaveScancontextAndKeys(*scanCloud);
+      util::Profiler::Stop("1. makeScanContext");
       auto t_descriptor_end = std::chrono::high_resolution_clock::now();
       descriptor_time.push_back(time_inc(t_descriptor_end, t_descriptor_begin));
 
@@ -437,7 +487,26 @@ int main (int argc, char * argv[])
       loop_transform.first << 0, 0, 0;
       loop_transform.second = Eigen::Matrix3d::Identity();
       std::vector<std::pair<STDesc, STDesc>> loop_std_pair;
-      if (i > cfg.skip_near_num_)
+
+      LOG(INFO) << "IDX[" << (key_translations.size() - 1U) << "] "
+                << "Scan Cloud Size: " << scanCloud->size() << std::endl;
+
+      std_manager->key_cloud_vec_.push_back(scanCloud);
+      // if (cfg.is_benchmark)
+      // {
+      //   std_manager->key_positions_.push_back(translation);
+      //   std_manager->key_times_.push_back(laser_time);
+      // }
+      if (FLAGS_visualize)
+      {
+        visualizer.setCloud(key_cloud, "sample cloud");
+        // visualizer.addCloud(key_cloud, "global");
+        // visualizer.setRGBCloud(rgb_cloud);
+        // visualizer.setRGBNormalCloud(corner_cloud, corner_normals, "_curr", 15.0);
+        // visualizer.setRGBNormalCloud(corner_cloud_before_nms, corner_normals_before_nms, "_befnms", 10.0);
+      }
+
+      if (key_translations.size() > 50UL)
       {
         // std_manager->SearchLoop(
         //   stds_vec,
@@ -445,16 +514,37 @@ int main (int argc, char * argv[])
         //   loop_transform,
         //   loop_std_pair);
 
-        auto detectResult = scManager.detectLoopClosureID(); // first: nn index, second: yaw diff
-        int SCclosestHistoryFrameID = detectResult.first;
-        if( SCclosestHistoryFrameID != -1 )
-        {
-          const int prev_node_idx = SCclosestHistoryFrameID;
-          const int curr_node_idx = keyframe_idx; // because cpp starts 0 and ends n-1
-          LOG(INFO) << "Loop detected! - between " << prev_node_idx << " and " << curr_node_idx;
-        }
+        // auto detectResult = scManager.detectLoopClosureID(); // first: nn index, second: yaw diff
+        int nn_idx; double score, yaw_diff;
+        util::Profiler::Start("2. Search Loop");
+        scManager.detectLoopClosureID(nn_idx, score, yaw_diff);
+        util::Profiler::Stop("2. Search Loop");
+
+        // int SCclosestHistoryFrameID = detectResult.first;
+        // if( SCclosestHistoryFrameID != -1 )
+        // {
+        //   const int prev_node_idx = SCclosestHistoryFrameID;
+        //   const int curr_node_idx = keyframe_idx; // because cpp starts 0 and ends n-1
+        //   LOG(INFO) << "Loop detected! - between " << prev_node_idx << " and " << curr_node_idx;
+        // }
+
         auto t_query_end = std::chrono::high_resolution_clock::now();
         querying_time.push_back(time_inc(t_query_end, t_query_begin));
+
+        fout_score << std::fixed;
+        fout_score.precision(6);
+        fout_score << key_timestamps.back() << ' ';
+        fout_score << score << ' ';
+        Eigen::Vector3d query_translation = key_translations.back();
+        Eigen::Vector3d value_translation = key_translations[nn_idx];
+        fout_score.precision(4);
+        fout_score << query_translation(0) << ' ';
+        fout_score << query_translation(1) << ' ';
+        fout_score << query_translation(2) << ' ';
+        fout_score << value_translation(0) << ' ';
+        fout_score << value_translation(1) << ' ';
+        fout_score << value_translation(2) << '\n';
+
 
         // if (search_result.first > 0)
         // {
@@ -469,20 +559,6 @@ int main (int argc, char * argv[])
         // auto t_map_update_end = std::chrono::high_resolution_clock::now();
         // update_time.push_back(time_inc(t_map_update_end, t_map_update_begin));
 
-        std_manager->key_cloud_vec_.push_back(key_cloud);
-        // if (cfg.is_benchmark)
-        // {
-        //   std_manager->key_positions_.push_back(translation);
-        //   std_manager->key_times_.push_back(laser_time);
-        // }
-        LOG(INFO) << "tmp size: " << key_cloud->size() << std::endl;
-        if (FLAGS_visualize)
-        {
-          visualizer.setCloud(key_cloud, "sample cloud");
-          // visualizer.setRGBCloud(rgb_cloud);
-          // visualizer.setRGBNormalCloud(corner_cloud, corner_normals, "_curr", 15.0);
-          // visualizer.setRGBNormalCloud(corner_cloud_before_nms, corner_normals_before_nms, "_befnms", 10.0);
-        }
 
         if (search_result.first > 0
             || cfg.is_benchmark)
@@ -535,6 +611,52 @@ int main (int argc, char * argv[])
       corner_normals_before_nms->clear();
     }
   }
+
+  auto sz = static_cast<int>(key_translations.size());
+  for (int i = 0; i < sz; ++i)
+  {
+    auto & tr = key_translations[i];
+
+    int li = std::max(0, i-10);
+    int hi = std::min(i+10, sz-1);
+
+    for (int j = 0; j < li; j++)
+    {
+      auto dist = (key_translations[i] - key_translations[j]).norm();
+      if (dist <= 5.0)
+      {
+        fout_loop << fmt::format("{} {}\n", std::max(i, j), std::min(i, j));
+      }
+    }
+    for (int j = hi; j < sz; j++)
+    {
+      auto dist = (key_translations[i] - key_translations[j]).norm();
+      if (dist <= 5.0)
+      {
+        fout_loop << fmt::format("{} {}\n", std::max(i, j), std::min(i, j));
+      }
+    }
+
+    // LOG(INFO) << "";
+    // const auto & timestamp = timestamps[i];
+    // Eigen::Vector3d translation;
+    // Eigen::Quaterniond quaternion;
+    // bool succ = queryPoseByTimestamp(
+    //   pose_timestamps,
+    //   pose_translations,
+    //   pose_quaternions,
+    //   timestamp,
+    //   translation,
+    //   quaternion);
+    // tmp_trs.push_back(translation);
+  }
+
+
+  fout_score.close();
+
+  fout_ctime << util::Profiler::DisplayAllTimeLogs();
+  fout_ctime.close();
+  fout_loop.close();
 
 
   // double mean_descriptor_time =

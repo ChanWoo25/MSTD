@@ -74,6 +74,12 @@ public:
     void makeAndSaveScancontextAndKeys( pcl::PointCloud<SCPointType> & _scan_down );
     std::pair<int, float> detectLoopClosureID( void ); // int: nearest node index, float: relative yaw
 
+    // Score return version
+    void detectLoopClosureID(
+        int & nn_idx,
+        double & score,
+        double & yaw_diff);
+
 public:
     // hyper parameters ()
     const double LIDAR_HEIGHT = 2.0; // lidar height : add this for simply directly using lidar scan in the lidar local coord (not robot base coord) / if you use robot-coord-transformed lidar scans, just set this as 0.
@@ -86,7 +92,8 @@ public:
 
     // tree
     const int    NUM_EXCLUDE_RECENT = 50; // simply just keyframe gap, but node position distance-based exclusion is ok.
-    const int    NUM_CANDIDATES_FROM_TREE = 10; // 10 is enough. (refer the IROS 18 paper)
+    int    NUM_CANDIDATES_FROM_TREE = 10; // 10 is enough. (refer the IROS 18 paper)
+    void setNumCandidates( const int & num) { NUM_CANDIDATES_FROM_TREE = num; }
 
     // loop thres
     const double SEARCH_RATIO = 0.1; // for fast comparison, no Brute-force, but search 10 % is okay. // not was in the original conf paper, but improved ver.

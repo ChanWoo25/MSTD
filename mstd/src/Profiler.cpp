@@ -1,7 +1,7 @@
 // Author Chanwoo Lee (https://github.com/ChanWoo25)
 #include <Profiler.hpp>
 
-namespace cwlee {
+namespace util {
 
 void Timer::update(const double & curr_dt)
 {
@@ -189,4 +189,4 @@ std::string Profiler::display_all_time_logs_()
   return ss.str();
 }
 
-} // namespace cwlee
+} // namespace util

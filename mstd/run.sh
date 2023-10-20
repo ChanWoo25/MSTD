@@ -34,10 +34,10 @@
 #   --sequence_dir=/data/datasets/dataset_std/park_avia_01 \
 #   --result_dir=/data/results/MSTD/231011_Test/park_avia_01-z_max=15.0
 
-./bin/main_std \
-  --sequence_dir=/data/datasets/dataset_kitti/00 \
-  --result_dir=/data/results/MSTD/231013_Test/kitti_default \
-  --pose_fn=/data/datasets/dataset_std/kitti/kitti00.txt
+# ./bin/main_std \
+#   --sequence_dir=/data/datasets/dataset_kitti/00 \
+#   --result_dir=/data/results/MSTD/231013_Test/kitti_default \
+#   --pose_fn=/data/datasets/dataset_std/kitti/kitti00.txt
 
 # ./bin/main_scancontext \
 #   --sequence_dir=/data/datasets/dataset_kitti/00 \
@@ -45,3 +45,24 @@
 #   --pose_fn=/data/datasets/dataset_std/kitti/kitti00.txt \
 #   --visualize=false
 
+# KITTI
+for SEQ in 00 02 05 08 ; do
+  for SC_CAND_NUM in 10 50; do
+    ./bin/main_scancontext \
+      --sequence_dir=/data/datasets/dataset_kitti/${SEQ} \
+      --result_dir=/data/results/MSTD/231013_Test/kitti_default \
+      --pose_fn=/data/datasets/dataset_std/kitti/kitti${SEQ}.txt \
+      --visualize=false \
+      --seq_name=kitti${SEQ} \
+      --SC_CAND_NUM=${SC_CAND_NUM}
+  done
+done
+
+# Test #
+# ./bin/main_scancontext \
+#   --sequence_dir=/data/datasets/dataset_kitti/08 \
+#   --result_dir=/data/results/MSTD/231013_Test/kitti_default \
+#   --pose_fn=/data/datasets/dataset_std/kitti/kitti08.txt \
+#   --visualize=true \
+#   --seq_name=kitti08 \
+#   --SC_CAND_NUM=10
